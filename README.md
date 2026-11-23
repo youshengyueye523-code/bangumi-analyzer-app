@@ -9,21 +9,21 @@
 把你在 Bangumi 的看过、想看、评分、标签与系列关系同步到自己的电脑本地，离线检索、回看时间趋势、梳理系列与家族作品，并由桌面伴侣 **Companion 与小番** 陪你完成一键安装、备份与日常管理。
 
 <p>
-  <a href="https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4"><strong>⬇️ 下载 Windows 版 (v2.0.0-rc4)</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4"><strong>⬇️ 下载 Windows 版</strong></a>
+  &nbsp;|&nbsp;
   <a href="https://youshengyueye523-code.github.io/bangumi-analyzer-site/"><strong>🌐 产品官网</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="https://bangumi-analyzer-demo.vercel.app"><strong>✨ 在线只读 Demo</strong></a>
-  &nbsp;&nbsp;·&nbsp;&nbsp;
+  &nbsp;|&nbsp;
+  <a href="https://bangumi-analyzer-demo.vercel.app"><strong>✨ 在线 Demo</strong></a>
+  &nbsp;|&nbsp;
   <a href="./CONTRIBUTING.md">开发者指南</a>
 </p>
 
 <p>
-  <code>Windows 10 / 11 (x64)</code>
+  <code>Windows 10/11 x64</code>
   &nbsp;·&nbsp;
   <code>Analyzer v2.0.0 (r3)</code>
   &nbsp;·&nbsp;
-  <code>Companion v2.0.0-rc4 (Pre-release)</code>
+  <code>Companion v2.0.0-rc4</code>
   &nbsp;·&nbsp;
   <code>MIT + CC BY 4.0</code>
 </p>
@@ -48,13 +48,28 @@
 
 ## 2. 真实界面预览
 
-| Companion 桌面伴侣与小番（Live2D） | Analyzer 时间趋势分析 |
-| :---: | :---: |
-| <img src="docs/images/companion-home-dark.png" alt="Companion 桌面伴侣主界面与小番 Live2D" width="100%" /> | <img src="docs/images/analyzer-trends.webp" alt="Analyzer 时间趋势统计界面" width="100%" /> |
-
-| Series / IP 实体证据与评分画像 | 数据中枢自检与诊断 |
-| :---: | :---: |
-| <img src="docs/images/analyzer-series.webp" alt="Series 实体详情与评分分析" width="100%" /> | <img src="docs/images/analyzer-diagnostics.webp" alt="数据中枢多模块自检" width="100%" /> |
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <strong>Companion 桌面伴侣与小番（Live2D）</strong><br /><br />
+      <img src="docs/images/companion-home-dark.png" alt="Companion 桌面伴侣主界面与小番 Live2D" width="100%" />
+    </td>
+    <td width="50%" align="center">
+      <strong>Analyzer 时间趋势分析</strong><br /><br />
+      <img src="docs/images/analyzer-trends.webp" alt="Analyzer 时间趋势统计界面" width="100%" />
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <strong>Series / IP 实体证据与评分画像</strong><br /><br />
+      <img src="docs/images/analyzer-series.webp" alt="Series 实体详情与评分分析" width="100%" />
+    </td>
+    <td width="50%" align="center">
+      <strong>数据中枢自检与诊断</strong><br /><br />
+      <img src="docs/images/analyzer-diagnostics.webp" alt="数据中枢多模块自检" width="100%" />
+    </td>
+  </tr>
+</table>
 
 > 以上均为程序真实运行截图，使用公开安全示例数据；数据中枢与时间趋势截图均来自 Analyzer v2.0.0 示例库。
 
@@ -76,11 +91,11 @@
 
 > ⚠️ **请勿下载 GitHub 自动生成的 `Source code (zip)` 作为安装包**——请使用下方预编译的 Windows 发行文件。
 
-| 版本形态 | 适用人群 | 文件名与大小 | 直接下载 |
-| --- | --- | --- | --- |
-| **图形安装版（推荐）** | 绝大多数 Windows 用户；支持向导安装、开始菜单/桌面快捷方式与独立卸载器 | `Bangumi-Analyzer-Companion-Setup-2.0.0-rc4-win-x64.exe`（199.1 MB） | [直接下载安装器 (.exe)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/Bangumi-Analyzer-Companion-Setup-2.0.0-rc4-win-x64.exe) |
-| **绿色便携版** | 习惯解压即用、希望配置随文件夹一起带走的用户（配置存在 `companion-data/`） | `Bangumi-Analyzer-Companion-Portable-2.0.0-rc4-win-x64.zip`（199.0 MB） | [直接下载便携包 (.zip)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/Bangumi-Analyzer-Companion-Portable-2.0.0-rc4-win-x64.zip) |
-| **校验清单与发布页** | 下载后核对文件完整性、查看完整发行说明 | `SHA256SUMS.txt` | [查看 Release v2.0.0-rc4](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4) |
+| 下载入口 | 形态与大小 | 适用人群 |
+| --- | --- | --- |
+| **[⬇️ 下载图形安装版 (.exe)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/Bangumi-Analyzer-Companion-Setup-2.0.0-rc4-win-x64.exe)** | 安装器（推荐）· 199.1 MB | 绝大多数 Windows 用户；图形向导、桌面/开始菜单快捷方式、保留数据卸载器 |
+| **[📦 下载绿色便携版 (.zip)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/Bangumi-Analyzer-Companion-Portable-2.0.0-rc4-win-x64.zip)** | 完整便携包 · 199.0 MB | 解压即用、配置保存在 `companion-data/` 方便整目录迁移 |
+| **[🔍 查看 Release v2.0.0-rc4](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4)** | 发布说明与 `SHA256SUMS.txt` | 核对文件完整性、阅读完整更新日志与已知限制 |
 
 ### 系统要求与文件校验
 
