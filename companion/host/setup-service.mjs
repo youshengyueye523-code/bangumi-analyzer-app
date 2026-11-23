@@ -101,9 +101,9 @@ export async function inspectSessionLock(installDir) {
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, '../..');
-export const BUNDLED_ANALYZER_REVISION = 3;
-export const DEFAULT_R2_ZIP = join(REPO_ROOT, 'dist/distribution-EVZIMl/Bangumi-Analyzer-2.0.0-windows-x64-r3.zip');
-export const R2_ZIP_HASH = 'adfeb5d29e59823c9d91def92eda18851a8b9991723435798842410ccf5f5ae6';
+export const BUNDLED_ANALYZER_REVISION = 4;
+export const DEFAULT_R2_ZIP = join(REPO_ROOT, 'dist/distribution-2nUlPu/Bangumi-Analyzer-2.0.0-windows-x64-r4.zip');
+export const R2_ZIP_HASH = 'a773d96356cd659ad845926c1f3d695092e09b659d9a3a57e227fb49ca095445';
 
 export function resolveCompanionHome(customHome) {
   if (customHome) return resolve(customHome);

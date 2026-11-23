@@ -25,14 +25,14 @@ const INSTALLER_SRC_DIR = path.join(COMPANION_ROOT, 'installer');
 const OUT_ROOT = path.join(COMPANION_ROOT, 'dist');
 const PORTABLE_DIR = path.join(OUT_ROOT, 'Bangumi-Analyzer-Companion-Portable-win-x64');
 const LEGACY_STAGE_DIR = path.join(OUT_ROOT, 'Bangumi-Analyzer-Companion-win-x64');
-const RELEASE_VERSION = '2.0.0-rc4';
+const RELEASE_VERSION = '2.0.0-rc5';
 const SETUP_EXE = path.join(OUT_ROOT, `Bangumi-Analyzer-Companion-Setup-${RELEASE_VERSION}-win-x64.exe`);
 const PORTABLE_ZIP = path.join(OUT_ROOT, `Bangumi-Analyzer-Companion-Portable-${RELEASE_VERSION}-win-x64.zip`);
-const ANALYZER_REVISION = 3;
+const ANALYZER_REVISION = 4;
 const R2_ZIP =
   process.env.ANALYZER_BUNDLE_ZIP ||
-  path.join(REPO_ROOT, 'dist/distribution-EVZIMl/Bangumi-Analyzer-2.0.0-windows-x64-r3.zip');
-const EXPECTED_R2_SHA256 = process.env.ANALYZER_BUNDLE_SHA256 ?? 'adfeb5d29e59823c9d91def92eda18851a8b9991723435798842410ccf5f5ae6';
+  path.join(REPO_ROOT, 'dist/distribution-2nUlPu/Bangumi-Analyzer-2.0.0-windows-x64-r4.zip');
+const EXPECTED_R2_SHA256 = process.env.ANALYZER_BUNDLE_SHA256 ?? 'a773d96356cd659ad845926c1f3d695092e09b659d9a3a57e227fb49ca095445';
 
 const CSC_EXE = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
 
@@ -253,7 +253,7 @@ async function main() {
     const st = await stat(full);
     entries[rel] = { size: st.size, sha256: await sha256(full) };
   }
-  const buildId = `rc4-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}`;
+  const buildId = `rc5-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}`;
   await writeFile(
     path.join(PORTABLE_DIR, 'release-checksums.json'),
     JSON.stringify(

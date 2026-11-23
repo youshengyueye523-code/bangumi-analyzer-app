@@ -11,7 +11,7 @@ using System.Windows.Forms;
 using Microsoft.Win32;
 
 [assembly: AssemblyTitle("Bangumi Analyzer Companion Setup")]
-[assembly: AssemblyDescription("Bangumi Analyzer Companion Windows Installer (with Analyzer 2.0.0 r2)")]
+[assembly: AssemblyDescription("Bangumi Analyzer Companion Windows Installer (with Analyzer 2.0.0 r4)")]
 [assembly: AssemblyProduct("Bangumi Analyzer Companion Installer")]
 [assembly: AssemblyVersion("2.0.0.0")]
 [assembly: AssemblyFileVersion("2.0.0.0")]
@@ -254,7 +254,7 @@ namespace BangumiCompanionInstaller {
           AutoSize = true
         };
         var hSub = new Label {
-          Text = "二次元本地番剧档案桌面伴侣 · 内置 Analyzer 2.0.0 (r2) · 无需管理员权限",
+          Text = "二次元本地番剧档案桌面伴侣 · 内置 Analyzer 2.0.0 (r4) · 无需管理员权限",
           ForeColor = Color.FromArgb(182, 188, 210),
           Location = new Point(26, 52),
           AutoSize = true

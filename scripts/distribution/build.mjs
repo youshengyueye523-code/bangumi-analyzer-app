@@ -14,7 +14,7 @@ const base = join(repo, 'dist'); mkdirSync(base, { recursive: true });
 if (resolve(base) !== (await import('node:fs')).realpathSync(base)) throw new Error('Output root must not be a junction');
 const work = mkdtempSync(join(base, 'distribution-'));
 const build = join(work, 'build'); mkdirSync(build);
-const distributionRevision = 3;
+const distributionRevision = 4;
 const releaseName = `Bangumi-Analyzer-${version}-windows-x64-r${distributionRevision}`;
 const release = join(work, releaseName); mkdirSync(release);
 const sourceFiles = [];

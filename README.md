@@ -9,7 +9,7 @@
 把你在 Bangumi 的看过、想看、评分、标签与系列关系同步到自己的电脑本地，离线检索、回看时间趋势、梳理系列与家族作品，并由桌面伴侣 **Companion 与小番** 陪你完成一键安装、备份与日常管理。
 
 <p>
-  <a href="https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4"><strong>⬇️ 下载 Windows 版</strong></a>
+  <a href="https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc5"><strong>⬇️ 下载 Windows 版</strong></a>
   &nbsp;|&nbsp;
   <a href="https://youshengyueye523-code.github.io/bangumi-analyzer-site/"><strong>🌐 产品官网</strong></a>
   &nbsp;|&nbsp;
@@ -21,9 +21,9 @@
 <p>
   <code>Windows 10/11 x64</code>
   &nbsp;·&nbsp;
-  <code>Analyzer v2.0.0 (r3)</code>
+  <code>Analyzer v2.0.0 (r4)</code>
   &nbsp;·&nbsp;
-  <code>Companion v2.0.0-rc4</code>
+  <code>Companion v2.0.0-rc5</code>
   &nbsp;·&nbsp;
   <code>MIT + CC BY 4.0</code>
 </p>
@@ -87,22 +87,22 @@
 
 ## 4. 下载 Windows 版
 
-当前公开版本为 **Pre-release：`v2.0.0-rc4`**（内置 **Bangumi Analyzer `v2.0.0 r3`**，免装 Node.js，开箱即用）。
+当前公开版本为 **Pre-release：`v2.0.0-rc5`**（内置 **Bangumi Analyzer `v2.0.0 r4`** / Series Engine v3，免装 Node.js，开箱即用；历史版本 [`v2.0.0-rc4`](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4) 保留归档）。
 
 > ⚠️ **请勿下载 GitHub 自动生成的 `Source code (zip)` 作为安装包**——请使用下方预编译的 Windows 发行文件。
 
 | 下载入口 | 形态与大小 | 适用人群 |
 | --- | --- | --- |
-| **[⬇️ 下载图形安装版 (.exe)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/Bangumi-Analyzer-Companion-Setup-2.0.0-rc4-win-x64.exe)** | 安装器（推荐）· 199.1 MB | 绝大多数 Windows 用户；图形向导、桌面/开始菜单快捷方式、保留数据卸载器 |
-| **[📦 下载绿色便携版 (.zip)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/Bangumi-Analyzer-Companion-Portable-2.0.0-rc4-win-x64.zip)** | 完整便携包 · 199.0 MB | 解压即用、配置保存在 `companion-data/` 方便整目录迁移 |
-| **[🔍 查看 Release v2.0.0-rc4](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4)** | 发布说明与 `SHA256SUMS.txt` | 核对文件完整性、阅读完整更新日志与已知限制 |
+| **[⬇️ 下载图形安装版 (.exe)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc5/Bangumi-Analyzer-Companion-Setup-2.0.0-rc5-win-x64.exe)** | 安装器（推荐）· 199.1 MB | 绝大多数 Windows 用户；图形向导、桌面/开始菜单快捷方式、保留数据卸载器 |
+| **[📦 下载绿色便携版 (.zip)](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc5/Bangumi-Analyzer-Companion-Portable-2.0.0-rc5-win-x64.zip)** | 完整便携包 · 199.0 MB | 解压即用、配置保存在 `companion-data/` 方便整目录迁移 |
+| **[🔍 查看 Release v2.0.0-rc5](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc5)** | 发布说明与 `SHA256SUMS.txt` | 核对文件完整性、阅读完整更新日志与已知限制 |
 
 ### 系统要求与文件校验
 
 - **系统要求**：Windows 10 / 11（64 位 x64），约 800 MB 可用磁盘空间。无需预先安装 Node.js 或 Python。
-- **核对 SHA-256**（可在 PowerShell 中运行 `Get-FileHash <文件名> -Algorithm SHA256` 并与 [SHA256SUMS.txt](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc4/SHA256SUMS.txt) 比对）：
-  - 安装版 `.exe`：`d4115df331ff2c7e4bc8817604fdca9d4a153a6bcac01927bb3b46da80181047`
-  - 便携版 `.zip`：`f5e25f10f2544b3cfe8253c83b7a7ebb99eca86435db3515989d70cc9a9e7f59`
+- **核对 SHA-256**（可在 PowerShell 中运行 `Get-FileHash <文件名> -Algorithm SHA256` 并与 [SHA256SUMS.txt](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/download/v2.0.0-rc5/SHA256SUMS.txt) 比对）：
+  - 安装版 `.exe`：`86aea41aeb02fea6df6a48c335954a34f8f58787ca95d44ac8679a439278266d`
+  - 便携版 `.zip`：`fcef14985c97308a8c32ff3189a5a4317834d51f2805b95867a817327553f496`
 - **关于 Windows SmartScreen 提示**：本预发行版目前**尚未进行 Authenticode 商业代码签名**，首次运行时 Windows SmartScreen 可能会提示「未知发布者」。请先核对上方 SHA-256 摘要确认文件来自官方 GitHub Release，再按系统提示决定是否继续运行；**切勿关闭 Windows Defender 或全局禁用系统防护**。
 
 ---

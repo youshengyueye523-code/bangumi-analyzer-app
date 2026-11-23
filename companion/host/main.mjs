@@ -148,6 +148,8 @@ app.on('child-process-gone', (_event, details) => {
 
 function resolveBundledR2Zip(explicitPath) {
   if (explicitPath) return explicitPath;
+  const bundledR4 = join(here, '../bundle/Bangumi-Analyzer-2.0.0-windows-x64-r4.zip');
+  if (existsSync(bundledR4)) return bundledR4;
   const bundledR3 = join(here, '../bundle/Bangumi-Analyzer-2.0.0-windows-x64-r3.zip');
   if (existsSync(bundledR3)) return bundledR3;
   const bundledR2 = join(here, '../bundle/Bangumi-Analyzer-2.0.0-windows-x64-r2.zip');
