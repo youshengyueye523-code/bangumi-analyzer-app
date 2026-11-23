@@ -42,7 +42,8 @@ import { recordMutation } from './mutation.js';
 import { titleCandidatesForMutation } from './titleCandidates.js';
 import { projectManualFranchiseLinks } from './manualFranchiseProjection.js';
 
-export const SERIES_ENGINE_VERSION = 2;
+export const SERIES_ENGINE_VERSION = 3;
+const SERIES_ENGINE_VERSION_META_KEY = 'series_engine_version';
 
 export interface SeriesRebuildResult {
   series: number;
@@ -1666,6 +1667,7 @@ export function recomputeSeries(): SeriesRebuildResult {
      * - 找不到合法后继 → 退役（alias_retired），旧 key 诚实 404，而不是悬空。
      */
     reconcileEntityAliases(timestamp, result);
+    setMeta(SERIES_ENGINE_VERSION_META_KEY, String(SERIES_ENGINE_VERSION));
   });
 
   return result;
@@ -1937,6 +1939,27 @@ export function ensureSeriesEngine(): boolean {
   const subjects = one<{ n: number }>('SELECT COUNT(*) AS n FROM subjects');
   if (Number(subjects?.n ?? 0) === 0) return refreshedRatings;
   if (Number(existing?.n ?? 0) > 0) {
+    /*
+     * v2.0.0 r3：升级到新版 Series 标题解析契约后，若旧库仍停留在更早的引擎版本，
+     * 按当前 source-of-truth 原子重算一次派生投影（保留人工锁、候选否决与全部原始数据），
+     * 避免旧派生数据与新算法长期漂移。
+     */
+    const storedEngineVersion = Number(getMeta(SERIES_ENGINE_VERSION_META_KEY) ?? 0);
+    if (storedEngineVersion < SERIES_ENGINE_VERSION) {
+      const autoSeries = Number(
+        one<{ n: number }>(
+          `SELECT COUNT(*) AS n FROM series_entities WHERE state <> 'stale' AND title_state <> 'manual'`,
+        )?.n ?? 0,
+      );
+      if (autoSeries > 0) {
+        transaction(() => {
+          recomputeSeries();
+          recordMutation('maintenance', `refresh series derivation to engine v${SERIES_ENGINE_VERSION}`);
+        });
+        return true;
+      }
+      setMeta(SERIES_ENGINE_VERSION_META_KEY, String(SERIES_ENGINE_VERSION));
+    }
     /*
      * v1.8 OD2：旧库升级后 franchise_entities.average_rate 可能仍为 NULL /
      * 与成员聚合不一致。这里按当前 source-of-truth 重算一次派生投影
