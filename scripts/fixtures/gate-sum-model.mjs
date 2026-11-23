@@ -1,0 +1,4 @@
+// New sum/conservation fixture. Only in-memory SQLite; no product imports.
+export function setup(db){db.exec('CREATE TABLE events(id INTEGER PRIMARY KEY,units INTEGER NOT NULL);CREATE TABLE rollup(id INTEGER PRIMARY KEY,value INTEGER NOT NULL);PRAGMA user_version=29;INSERT INTO events VALUES(1,8),(2,-3),(3,5);INSERT INTO rollup VALUES(1,999);');}
+export function inspect(db){const total=db.prepare('SELECT units FROM events ORDER BY id').all().reduce((n,x)=>n+x.units,0);return db.prepare('SELECT id,value FROM rollup ORDER BY id').all().filter(x=>x.value!==total).map(x=>({id:x.id,before:x.value,after:total}));}
+export function execute(db,plan){db.exec('BEGIN');try{if(JSON.stringify(plan)!==JSON.stringify(inspect(db)))throw Error('stale plan');for(const x of plan)db.prepare('UPDATE rollup SET value=? WHERE id=?').run(x.after,x.id);if(inspect(db).length)throw Error('verification');db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}}

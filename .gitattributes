@@ -1,0 +1,5 @@
+# 批处理脚本使用 Windows 换行，避免在其它机器上出现解析问题
+*.bat text eol=crlf
+
+# 统一文本换行，避免跨平台提交产生噪声
+* text=auto

@@ -1,0 +1,9 @@
+packages:
+  - 'packages/*'
+  - 'public-demo'
+
+# Vite/tsx need esbuild's platform binary setup script to run.
+onlyBuiltDependencies:
+  - esbuild
+allowBuilds:
+  esbuild: true

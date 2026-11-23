@@ -1,0 +1,8 @@
+{
+  "name": "bangumi-companion-runtime-m0",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "engines": { "node": ">=24 <25" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

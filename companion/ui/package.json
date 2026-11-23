@@ -1,0 +1,29 @@
+{
+  "name": "@bangumi-analyzer/companion-ui",
+  "version": "0.0.0-m0",
+  "private": true,
+  "description": "Bangumi Analyzer Companion — M0 UI/UX 交互原型（全部系统行为为 mock）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5290 --strictPort",
+    "build": "tsc -p tsconfig.json --noEmit && vite build",
+    "preview": "vite preview --port 5291 --strictPort",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "screenshots": "node scripts/screenshots.mjs"
+  },
+  "dependencies": {
+    "@pixi/unsafe-eval": "6.5.10",
+    "lucide-react": "^0.545.0",
+    "pixi-live2d-display": "0.4.0",
+    "pixi.js": "6.5.10",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.1",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.9"
+  }
+}

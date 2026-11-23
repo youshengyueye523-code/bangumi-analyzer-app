@@ -1,0 +1,63 @@
+import{readFileSync,writeFileSync,cpSync,mkdirSync}from'node:fs';import{join}from'node:path';import{spawnSync}from'node:child_process';import{PROFILE,sha256,encode,ids,resultDigest,normalizeRaw,createReader,eligibleClaim,validateEvidenceChain}from'../gate-evidence-contract.mjs';
+export function runChainExtensions(base,root,evaluateGate){
+ mkdirSync(root,{recursive:true});const results=[],read=p=>JSON.parse(readFileSync(p,'utf8')),write=(p,x)=>writeFileSync(p,JSON.stringify(x,null,2)),ref=(p,f)=>({path:f,sha256:sha256(readFileSync(join(p,f)))});
+ const registry=(p,fn)=>{const r=read(join(p,'registry.json'));fn(r);write(join(p,'registry.json'),r);};
+ const proof=(p,id,fn)=>registry(p,r=>{const e=r.evidence.find(e=>e.id===id),v=read(join(p,e.path));fn(v,e,r);write(join(p,e.path),v);e.sha256=ref(p,e.path).sha256;});
+ const witness=(p,fn,id=0)=>{const path=join(p,'docs/quality/review-authority-v1.json'),a=read(path),w=read(join(p,a.authorizations[id].record.path));fn(w);write(join(p,a.authorizations[id].record.path),w);a.authorizations[id].record=ref(p,a.authorizations[id].record.path);write(path,a);};
+ const log=(p,w,fn)=>{const v=read(join(p,w.executionRecord.path));fn(v);write(join(p,w.executionRecord.path),v);w.executionRecord=ref(p,w.executionRecord.path);};
+ const run=(name,expected,fn=()=>{},start=base)=>{const p=join(root,name);cpSync(start,p,{recursive:true});fn(p);const actual=evaluateGate(join(p,'registry.json'),p),pass=expected==='reject'?['INVALID','NOT_READY'].includes(actual.status):actual.status===expected;results.push({name,expected,pass,actual});};
+ const property=(name,fn)=>{let error=null;try{fn()}catch(e){error=e.message}results.push({name,expected:'property holds',pass:!error,actual:{status:error?'PROPERTY_FAIL':'PROPERTY_OK',error}});};
+ const check=(ok,msg='independent expectation failed')=>{if(!ok)throw Error(msg)};
+ run('new-chain-positive','READY_FOR_FINAL_SCOPE');
+ for(const [n,v]of [['null',null],['string','wrong'],['empty',{}],['missing-sha',{path:'docs/witnessed-original.raw.json'}],['bad-sha',{path:'docs/witnessed-original.raw.json',sha256:'123'}],['absolute',{path:join(root,'never-read.json'),sha256:'A'.repeat(64)}],['outside',{path:'docs/../../outside-marker.json',sha256:'A'.repeat(64)}]])run('anchor-reference-'+n,'reject',p=>witness(p,w=>{w.rawResult=v;log(p,w,l=>l.rawResult=v)}));
+ run('anchor-byte-content-change','reject',p=>writeFileSync(join(p,'docs/witnessed-original.raw.json'),readFileSync(join(p,'docs/witnessed-original.raw.json'),'utf8')+' '));
+ run('anchor-valid-reference-different-content','reject',p=>witness(p,w=>{const raw=read(join(p,w.rawResult.path));raw.extraOrderedEvidence=['different'];write(join(p,w.rawResult.path),raw);w.rawResult=ref(p,w.rawResult.path);log(p,w,l=>l.rawResult=w.rawResult);}));
+ run('anchor-and-proof-material-independent','READY_FOR_FINAL_SCOPE',p=>proof(p,'IND',v=>{const raw=read(join(p,v.run.results.path));raw.assertions.reverse();raw.assertions.forEach(a=>a.objects.reverse());writeFileSync(join(p,'docs/equivalent.json'),JSON.stringify(raw));v.run.results=ref(p,'docs/equivalent.json');}));
+ run('current-equivalent-whitespace-correct-reference','READY_FOR_FINAL_SCOPE',p=>proof(p,'IND',v=>{writeFileSync(join(p,'docs/current-whitespace.json'),readFileSync(join(p,v.run.results.path),'utf8')+' ');v.run.results=ref(p,'docs/current-whitespace.json');}));
+ run('anchor-two-different-references','reject',p=>witness(p,w=>log(p,w,l=>l.rawResult=ref(p,'docs/external-independent.raw.json'))));
+ for(const field of ['type','evidenceProfile','protocol'])run('record-missing-'+field,'reject',p=>witness(p,w=>log(p,w,l=>delete l[field])));
+ run('witness-missing-profile','reject',p=>witness(p,w=>delete w.evidenceProfile));
+ run('witness-duplicate-claims','reject',p=>witness(p,w=>w.assertions.push(structuredClone(w.assertions[0]))));
+ run('proof-duplicate-claims','reject',p=>proof(p,'IND',v=>v.assertions.push(structuredClone(v.assertions[0]))));
+ run('raw-duplicate-claims','reject',p=>proof(p,'IND',v=>{const raw=read(join(p,v.run.results.path));raw.assertions.push(structuredClone(raw.assertions[0]));write(join(p,v.run.results.path),raw);v.run.results=ref(p,v.run.results.path);}));
+ run('projection-cannot-hide-failed-extra-assertion','reject',p=>proof(p,'IND',v=>{const raw=read(join(p,v.run.results.path));raw.assertions.push({...raw.assertions[0],id:'truth:failed-extra',result:'failed'});write(join(p,v.run.results.path),raw);v.run.results=ref(p,v.run.results.path);}));
+ run('raw-profile-required','reject',p=>proof(p,'IND',v=>{const raw=read(join(p,v.run.results.path));delete raw.evidenceProfile;write(join(p,v.run.results.path),raw);v.run.results=ref(p,v.run.results.path);}));
+ run('proof-classification-not-extra-qualification','reject',p=>proof(p,'IND',v=>v.run.classification='developer-cross-check'));
+ run('owner-set-reordered','READY_FOR_FINAL_SCOPE',p=>registry(p,r=>r.schema.ownerSources.reverse()));
+ run('owner-set-duplicate','reject',p=>registry(p,r=>r.schema.ownerSources.push(r.schema.ownerSources[0])));
+ run('all-proof-and-raw-assertion-sets-reordered','READY_FOR_FINAL_SCOPE',p=>{for(const id of ['DEV','IND'])proof(p,id,v=>{const raw=read(join(p,v.run.results.path));raw.assertions.reverse();raw.observations.objects.reverse();raw.assertions.forEach(a=>a.objects.reverse());v.assertions.reverse();v.assertions.forEach(a=>a.objects.reverse());v.observations.objects.reverse();write(join(p,v.run.results.path),raw);v.run.results=ref(p,v.run.results.path);});});
+ run('proof-local-subset-remains-valid','NOT_READY',p=>proof(p,'IND',v=>v.assertions=v.assertions.slice(0,1)));
+ run('unknown-snapshot-source','reject',p=>proof(p,'DEV',v=>{const raw=read(join(p,v.run.results.path));raw.snapshot.sources.UNREGISTERED='A'.repeat(64);v.snapshot=raw.snapshot;write(join(p,v.run.results.path),raw);v.run.results=ref(p,v.run.results.path);}));
+ run('old-profile-active-not-upgraded','reject',p=>proof(p,'IND',v=>v.evidenceProfile='origin-objects-v1'));
+ run('old-profile-historical-with-new-current','READY_FOR_FINAL_SCOPE',p=>registry(p,r=>r.evidence.push({...r.evidence[0],id:'HISTORY',usage:'historical'})));
+ // A genuinely new approval producer execution; only a synthetic custodian can authorize this synthetic namespace.
+ const riskRoot=join(root,'risk-source');cpSync(base,riskRoot,{recursive:true});
+ const approvalRun=spawnSync(process.execPath,[join(riskRoot,'docs/producer.mjs'),riskRoot,'risk-acceptance'],{encoding:'utf8',windowsHide:true});check(approvalRun.status===0,approvalRun.stderr);
+ const rr=read(join(riskRoot,'registry.json')),raw=read(join(riskRoot,'docs/risk-acceptance.raw.json'));check(raw.target.id==='INDEPENDENT_SUM_PROTOCOL_REVIEW');
+ const env={protocol:2,evidenceProfile:PROFILE,target:raw.target,kind:raw.kind,result:raw.result,executedAt:raw.executedAt,snapshot:raw.snapshot,approval:raw.approval,observations:raw.observations,run:{...raw.execution,results:ref(riskRoot,'docs/risk-acceptance.raw.json')},assertions:raw.assertions};write(join(riskRoot,'docs/risk-proof.json'),env);cpSync(join(riskRoot,'docs/risk-acceptance.raw.json'),join(riskRoot,'docs/risk-original.json'));
+ const rawResult=ref(riskRoot,'docs/risk-original.json'),record={protocol:1,evidenceProfile:PROFILE,type:'gate-review-execution',reviewId:raw.execution.reviewId,reviewerId:'synthetic-approver',assignmentId:'risk-assignment',target:raw.target,execution:raw.execution,exitCode:approvalRun.status,argv:[process.execPath,'producer.mjs','risk-acceptance'],rawResult,rawSemanticSha256:resultDigest(raw)};
+ write(join(riskRoot,'docs/risk-record.json'),record);const w={...record,type:'gate-review-witness',role:raw.kind,result:'passed',method:'risk-approval',snapshot:raw.snapshot,executionRecord:ref(riskRoot,'docs/risk-record.json'),assertions:raw.assertions};write(join(riskRoot,'docs/risk-witness.json'),w);const auth=read(join(riskRoot,'docs/quality/review-authority-v1.json'));auth.authorizations.push({reviewId:w.reviewId,record:ref(riskRoot,'docs/risk-witness.json')});write(join(riskRoot,'docs/quality/review-authority-v1.json'),auth);rr.evidence.push({id:'RISK',kind:raw.kind,result:'passed',scope:raw.target.id,usage:'active',...ref(riskRoot,'docs/risk-proof.json')});write(join(riskRoot,'registry.json'),rr);write(join(riskRoot,'risk-actual-execution.json'),{exitCode:approvalRun.status,stdout:approvalRun.stdout,stderr:approvalRun.stderr});
+ run('approval-actual-run-valid-chain','READY_FOR_FINAL_SCOPE',()=>{},riskRoot);
+ run('approval-anchor-missing-reference','reject',p=>witness(p,w=>{delete w.rawResult;log(p,w,l=>delete l.rawResult)},1),riskRoot);
+ run('approval-anchor-content-mismatch','reject',p=>witness(p,w=>{w.rawResult=ref(p,'docs/developer-cross-check.raw.json');log(p,w,l=>l.rawResult=w.rawResult)},1),riskRoot);
+ run('approval-unwitnessed-not-self-authorizing','reject',p=>{const path=join(p,'docs/quality/review-authority-v1.json'),au=read(path);au.authorizations.pop();write(path,au);},riskRoot);
+
+ run('same-developer-run-semantic-conflict','reject',p=>registry(p,r=>{const e=structuredClone(r.evidence.find(x=>x.id==='DEV')),v=read(join(p,e.path)),raw=read(join(p,v.run.results.path));raw.extra='conflicting-result';write(join(p,'docs/conflicting.raw.json'),raw);v.run.results=ref(p,'docs/conflicting.raw.json');write(join(p,'docs/conflicting.proof.json'),v);r.evidence.push({...e,id:'DEV_CONFLICT',...ref(p,'docs/conflicting.proof.json')});}));
+
+ run('ordered-run-evidence-not-equivalent','reject',p=>{proof(p,'DEV',v=>{const raw=read(join(p,v.run.results.path));raw.orderedEvidence=[1,2];write(join(p,v.run.results.path),raw);v.run.results=ref(p,v.run.results.path);});registry(p,r=>{const e=structuredClone(r.evidence.find(x=>x.id==='DEV')),v=read(join(p,e.path)),raw=read(join(p,v.run.results.path));raw.orderedEvidence.reverse();write(join(p,'docs/ordered-alias.raw.json'),raw);v.run.results=ref(p,'docs/ordered-alias.raw.json');write(join(p,'docs/ordered-alias.proof.json'),v);r.evidence.push({...e,id:'ORDER_ALIAS',...ref(p,'docs/ordered-alias.proof.json')});});});
+ run('many-aliases-remain-one-valid-run','READY_FOR_FINAL_SCOPE',p=>registry(p,r=>{const e=r.evidence.find(x=>x.id==='IND');for(let i=0;i<128;i++)r.evidence.push({...e,id:'ALIAS_'+i});}));
+ const reader=createReader(riskRoot),basis=read(join(riskRoot,rr.coverageBasis.path)),context={reader,registry:rr,sources:new Map(rr.sources.map(x=>[x.id,x])),expected:new Map(basis.records.map(x=>[x.id,x])),schemaIds:read(join(riskRoot,rr.schema.path)).tables.flatMap(t=>['table:'+t.table,...t.columns.map(c=>'field:'+t.table+'.'+c.name)]),authority:auth};
+ const riskProof=validateEvidenceChain(rr.evidence.find(x=>x.id==='RISK'),context);
+ property('approval-eligible-only-as-risk-acceptance',()=>check(eligibleClaim(riskProof,rr.records[0],'risk-acceptance',context)&&!eligibleClaim(riskProof,rr.records[0],null,context)));
+ const original=read(join(base,'docs/external-independent.raw.json'));
+ property('golden-map-vs-ordered-array',()=>check(encode({z:2,a:[2,1]})==='{"a":[2,1],"z":2}'));
+ property('golden-id-set',()=>check(JSON.stringify(ids(['B','A']))==='["A","B"]'));
+ property('duplicate-objects-rejected-before-digest',()=>{let rejected=false;try{normalizeRaw({...original,assertions:[{...original.assertions[0],objects:['table:events','table:events']}]})}catch{rejected=true}check(rejected)});
+ property('duplicate-assertions-rejected-before-map',()=>{let rejected=false;try{normalizeRaw({...original,assertions:[original.assertions[0],original.assertions[0]]})}catch{rejected=true}check(rejected)});
+ property('ordered-evidence-arrays-remain-sensitive',()=>check(resultDigest({...original,extra:[1,2]})!==resultDigest({...original,extra:[2,1]})));
+ property('all-semantic-values-remain-sensitive',()=>{for(const [k,v]of [['executedAt','2026-11-07T00:00:00Z'],['extra','changed']])check(resultDigest({...original,[k]:v})!==resultDigest(original));});
+ property('raw-digest-time-independent',()=>check(resultDigest({...original,expiresAt:'2020-01-01T00:00:00Z'})===resultDigest({...original,expiresAt:'2020-01-01T00:00:00Z'})));
+ property('unvalidated-qualified-flag-has-no-eligibility',()=>check(!eligibleClaim({origin:{qualified:true}},rr.records[0],null,{})));
+ for(let seed=1;seed<=8;seed++)property('deterministic-set-permutation-'+seed,()=>{const clone=structuredClone(original);clone.assertions.sort((a,b)=>((a.id.length*seed)%7)-((b.id.length*seed)%7));clone.assertions.forEach(a=>a.objects.reverse());clone.observations.objects.reverse();check(resultDigest(clone)===resultDigest(original));});
+ write(join(root,'results.json'),{results});return{results};
+}

@@ -1,0 +1,39 @@
+# Dependencies & builds
+node_modules/
+**/node_modules/
+dist/
+packages/*/dist/
+companion/dist/
+companion/dist-archive/
+companion/ui/dist/
+.pnpm-store/
+.runtime/
+
+# Local user data & credentials (NEVER commit)
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+.env
+.env.*
+.analyzer-session.json
+companion-data/
+
+# Proprietary Live2D Cubism SDK / Core (obtain from live2d.com)
+CubismSdkForWeb-*/
+companion/models/vendor/live2dcubismcore*
+companion/models/vendor/CORE-LICENSE.md
+companion/models/vendor/RedistributableFiles.txt
+
+# Test artifacts & local scratch
+test-results/
+packages/*/test-results/
+playwright-report/
+companion/host/.work/
+companion/runtime/.work/
+companion/host/NVIDIA Corporation/
+debug.log
+*.bak-*
+.DS_Store
+Thumbs.db

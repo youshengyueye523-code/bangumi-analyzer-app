@@ -1,0 +1,16 @@
+{
+  "scope": "subjects.raw / collections.raw; local representation, not remote truth",
+  "risk": "risk:source.snapshot-representation",
+  "samples": [
+    { "id": "SRC-N01", "raw": null, "expected": "absent", "why": "slim/old import may legitimately lack detail raw" },
+    { "id": "SRC-N02", "raw": "{}", "expected": "object", "why": "old export fallback, not proof of a complete detail" },
+    { "id": "SRC-N03", "raw": "{\"id\":999999,\"new_future_field\":{\"a\":1}}", "expected": "object", "why": "unknown provenance/epoch: do not invent identity mismatch or reject additive fields" },
+    { "id": "SRC-N04", "raw": "{\"subject_id\":81,\"type\":3,\"subject_type\":2}", "expected": "object", "why": "collection envelope is not Subject id/media type" },
+    { "id": "SRC-U01", "raw": "[]", "expected": "nonObject", "why": "legacy import provenance unknown; not automatically damaged source" },
+    { "id": "SRC-U02", "raw": "null", "expected": "nonObject", "why": "JSON null differs from SQL absence" },
+    { "id": "SRC-U03", "raw": "9007199254740993", "expected": "nonObject", "why": "no rounded identity comparison" },
+    { "id": "SRC-E01", "raw": "{", "expected": "invalid", "why": "minimal invalid JSON" },
+    { "id": "SRC-E02", "raw": "{\"name\":\"PRIVATE_历史别名\",}", "expected": "invalid", "why": "private text must not escape parser errors" },
+    { "id": "SRC-E03", "raw": "", "expected": "invalid", "why": "non-null empty text is not JSON; raw preserved" }
+  ]
+}

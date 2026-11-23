@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#191F3A"/>
+      <stop offset="55%" stop-color="#121629"/>
+      <stop offset="100%" stop-color="#221938"/>
+    </linearGradient>
+    <linearGradient id="rim-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFC2D4"/>
+      <stop offset="52%" stop-color="#E76B8E"/>
+      <stop offset="100%" stop-color="#7B93FF"/>
+    </linearGradient>
+    <linearGradient id="tv-shell" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FFD4E2"/>
+      <stop offset="55%" stop-color="#F79BB7"/>
+      <stop offset="100%" stop-color="#DF6289"/>
+    </linearGradient>
+    <linearGradient id="bar-a" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#9EB4FF"/>
+      <stop offset="100%" stop-color="#5E7CFF"/>
+    </linearGradient>
+    <linearGradient id="bar-b" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFD0DF"/>
+      <stop offset="100%" stop-color="#F27BA0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Outer rounded badge -->
+  <rect x="10" y="10" width="236" height="236" rx="56" fill="url(#bg-grad)"/>
+  <rect x="13" y="13" width="230" height="230" rx="53" fill="none" stroke="url(#rim-grad)" stroke-width="6" opacity="0.92"/>
+
+  <!-- Subtle sakura halo behind TV -->
+  <circle cx="128" cy="136" r="78" fill="#F9B6C8" opacity="0.11"/>
+
+  <!-- Cute Xiaofan TV antennas / cat-ear silhouette -->
+  <path d="M84 74 L66 44 C63 39 70 33 76 38 L104 66 Z" fill="url(#tv-shell)"/>
+  <path d="M172 74 L190 44 C193 39 186 33 180 38 L152 66 Z" fill="url(#tv-shell)"/>
+
+  <!-- TV body -->
+  <rect x="44" y="64" width="168" height="132" rx="34" fill="url(#tv-shell)"/>
+
+  <!-- Deep dark screen -->
+  <rect x="60" y="80" width="136" height="100" rx="22" fill="#0F1324"/>
+  <rect x="60" y="80" width="136" height="100" rx="22" fill="none" stroke="#FFFFFF" stroke-opacity="0.18" stroke-width="2.5"/>
+
+  <!-- Bold analytics bars legible even at 16x16 -->
+  <rect x="82" y="130" width="22" height="34" rx="7" fill="url(#bar-a)"/>
+  <rect x="117" y="112" width="22" height="52" rx="7" fill="url(#bar-b)"/>
+  <rect x="152" y="96" width="22" height="68" rx="7" fill="#FFF2F7"/>
+
+  <!-- Sakura 4-point sparkle accent -->
+  <path d="M95 96 L99 106 L109 110 L99 114 L95 124 L91 114 L81 110 L91 106 Z" fill="#FFC9DA"/>
+
+  <!-- Minimal TV feet / stand -->
+  <rect x="84" y="202" width="30" height="10" rx="5" fill="#F48FB1"/>
+  <rect x="142" y="202" width="30" height="10" rx="5" fill="#89A0FF"/>
+</svg>

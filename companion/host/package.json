@@ -1,0 +1,12 @@
+{
+  "name": "bangumi-companion-host-m1a",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test test/*.test.mjs"
+  },
+  "devDependencies": { "electron": "45.4.1" }
+}

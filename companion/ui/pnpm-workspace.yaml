@@ -1,0 +1,5 @@
+# companion/ui 是独立原型包：自成 workspace 根，不加入仓库根 workspace。
+packages:
+  - '.'
+allowBuilds:
+  esbuild: true

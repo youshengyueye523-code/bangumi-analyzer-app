@@ -1,0 +1,23 @@
+import{readFileSync,writeFileSync}from'node:fs';import{join}from'node:path';import{pathToFileURL}from'node:url';import{randomUUID}from'node:crypto';import{DatabaseSync}from'node:sqlite';import assert from'node:assert/strict';import{PROFILE,hash,claimSha,policySha}from'./encoder.mjs';
+const[root,kind]=process.argv.slice(2);assert(['developer-cross-check','external-independent','risk-acceptance'].includes(kind));
+const get=p=>JSON.parse(readFileSync(join(root,p),'utf8')),ref=p=>({path:p,sha256:hash(readFileSync(join(root,p)))}),basis=get('docs/policy.json'),claims=new Map(basis.records.map(x=>[x.id,x]));
+assert.equal(basis.target.id,'INDEPENDENT_SUM_PROTOCOL_REVIEW');
+const model=await import(pathToFileURL(join(root,'docs/model.mjs'))),db=new DatabaseSync(':memory:');model.setup(db);
+const census={schema:db.prepare('PRAGMA user_version').get().user_version,tables:db.prepare("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name").all().map(t=>({table:t.name,columns:db.prepare(`PRAGMA table_info(${t.name})`).all().map(c=>({name:c.name}))}))};assert.deepEqual(census,get('docs/census.json'));
+const assertions=[];
+function prove(id,fn){fn();const b=claims.get(id);assertions.push({id,scope:b.scope,result:'passed',checks:{positive:true,negative:true,independentOracle:true,failurePath:true},objects:b.objects,contractSha256:claimSha(b)});}
+prove('table:events',()=>{assert.equal(db.prepare('SELECT COUNT(*) n FROM events').get().n,3);assert.throws(()=>db.exec('SELECT * FROM missing_events'));assert.equal(db.isTransaction,false);});
+prove('field:events.id',()=>{assert.throws(()=>db.exec('INSERT INTO events VALUES(1,50)'));assert.deepEqual(db.prepare('SELECT id FROM events ORDER BY id').all().map(x=>x.id),[1,2,3]);});
+prove('field:events.units',()=>{assert.throws(()=>db.exec('INSERT INTO events VALUES(4,NULL)'));assert.deepEqual(db.prepare('SELECT units FROM events ORDER BY id').all().map(x=>x.units),[8,-3,5]);});
+prove('table:rollup',()=>{assert.equal(db.prepare('SELECT COUNT(*) n FROM rollup').get().n,1);assert.throws(()=>db.exec('SELECT nonexistent FROM rollup'));assert.equal(db.isTransaction,false);});
+prove('field:rollup.id',()=>{assert.throws(()=>db.exec('INSERT INTO rollup VALUES(1,0)'));assert.equal(db.prepare('SELECT COUNT(*) n FROM rollup').get().n,1);});
+prove('field:rollup.value',()=>{assert.throws(()=>db.exec('INSERT INTO rollup VALUES(2,NULL)'));assert.equal(db.prepare('SELECT value FROM rollup').get().value,999);});
+prove('risk:rollup-sum',()=>{assert.deepEqual(model.inspect(db),[{id:1,before:999,after:10}]);assert.equal(db.prepare('SELECT sum(units) n FROM events').get().n,10);});
+prove('path:count-consumer',()=>{assert.equal(db.prepare('SELECT value FROM rollup WHERE id=1').get().value,999);assert.deepEqual(db.prepare('SELECT value FROM rollup WHERE id=9').all(),[]);});
+prove('repair:refresh-rollup',()=>{const original=db.prepare('SELECT * FROM events ORDER BY id').all(),before=db.prepare('SELECT * FROM rollup').all();assert.throws(()=>model.execute(db,[]),/stale/);assert.deepEqual(db.prepare('SELECT * FROM rollup').all(),before);model.execute(db,model.inspect(db));assert.deepEqual(db.prepare('SELECT * FROM events ORDER BY id').all(),original);assert.equal(db.prepare('SELECT value FROM rollup').get().value,10);});
+prove('truth:conservation',()=>{assert.deepEqual(model.inspect(db),[]);assert.equal(db.prepare('SELECT value-(SELECT sum(units) FROM events) n FROM rollup').get().n,0);assert.throws(()=>model.execute(db,[{id:1,before:999,after:10}]),/stale/);assert.equal(db.isTransaction,false);});
+const snapshot={policySha256:policySha(basis),schema:{version:census.schema,censusSha256:ref('docs/census.json').sha256},sources:Object.fromEntries(Object.entries(basis.sources).map(([id,x])=>[id,ref(x.path).sha256]))};
+const execution={id:randomUUID(),classification:kind,reviewId:['external-independent','risk-acceptance'].includes(kind)?randomUUID():null,command:`node docs/producer.mjs <synthetic-root> ${kind}`,runner:ref('docs/producer.mjs'),fixture:ref('docs/model.mjs')};
+const raw={...(kind==='risk-acceptance'?{approval:{approvedBy:'synthetic-custodian',reason:'test-only risk acceptance'}}:{}),protocol:2,evidenceProfile:PROFILE,target:basis.target,kind,result:'passed',executedAt:new Date().toISOString(),snapshot,execution,observations:{schema:snapshot.schema,objects:census.tables.flatMap(t=>['table:'+t.table,...t.columns.map(c=>'field:'+t.table+'.'+c.name)])},assertions};
+db.close();writeFileSync(join(root,`docs/${kind}.raw.json`),JSON.stringify(raw,null,2));console.log(JSON.stringify({kind,id:execution.id,reviewId:execution.reviewId,result:raw.result,assertions:assertions.length}));
+

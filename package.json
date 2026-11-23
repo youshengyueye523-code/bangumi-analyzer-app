@@ -1,0 +1,34 @@
+{
+  "name": "bangumi-analyzer",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Bangumi 个人动画数据同步与分析工具（本地优先，长期个人数据库）",
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "setup": "pnpm install && pnpm build:shared",
+    "build:shared": "pnpm -C packages/shared run build",
+    "dev": "pnpm build:shared && concurrently -k -n shared,server,web -c gray,cyan,magenta \"pnpm -C packages/shared run dev\" \"pnpm -C packages/server run dev\" \"pnpm -C packages/web run dev\"",
+    "dev:server": "pnpm build:shared && pnpm -C packages/server run dev",
+    "dev:web": "pnpm -C packages/web run dev",
+    "build": "pnpm build:shared && pnpm -C packages/server run build && pnpm -C packages/web run build",
+    "start": "pnpm -C packages/server run start",
+    "typecheck": "pnpm build:shared && pnpm -C packages/shared run typecheck && pnpm -C packages/server run typecheck && pnpm -C packages/web run typecheck",
+    "test": "pnpm build:shared && pnpm -C packages/shared run test && pnpm -C packages/server run test && pnpm -C packages/web run test",
+    "test:server": "pnpm -C packages/server run test",
+    "test:e2e": "playwright test",
+    "lint": "pnpm typecheck",
+    "format": "prettier --write \"packages/*/src/**/*.{ts,tsx,css,json}\" \"*.{json,md,yaml}\""
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^24.10.1",
+    "concurrently": "^9.2.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
