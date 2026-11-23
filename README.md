@@ -30,7 +30,7 @@
 
 <br />
 
-<img src="docs/images/analyzer-dashboard.webp" alt="Bangumi Analyzer 主仪表盘预览" width="100%" />
+<img src="docs/images/analyzer-dashboard.png" alt="Bangumi Analyzer 主仪表盘预览" width="100%" />
 
 </div>
 
