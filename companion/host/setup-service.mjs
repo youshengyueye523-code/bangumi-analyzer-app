@@ -244,6 +244,144 @@ async function probeLoopback() {
   });
 }
 
+/**
+ * Classify fetch/network errors talking to Bangumi API into plain Chinese diagnostics.
+ * Never misreports network failures as Token errors and never claims regional blocking without proof.
+ */
+export function classifyBangumiNetworkError(err) {
+  const name = String(err?.name ?? '');
+  const code = String(err?.cause?.code ?? err?.code ?? '').toUpperCase();
+  const msg = String(err?.cause?.message ?? err?.message ?? '');
+
+  if (name === 'TimeoutError' || name === 'AbortError' || code === 'UND_ERR_CONNECT_TIMEOUT' || code === 'ETIMEDOUT') {
+    return {
+      code: 'TIMEOUT',
+      message: '软件已正常启动，但连接 Bangumi 超时。请检查网络是否能够正常访问 Bangumi，然后点击重试。',
+      hint: '可先在浏览器确认能否打开 bgm.tv；也可点击「稍后再绑定」先完成本地安装，网络恢复后再同步。',
+    };
+  }
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || code === 'EAI_NONAME' || /getaddrinfo|ENOTFOUND|EAI_AGAIN/i.test(msg)) {
+    return {
+      code: 'DNS_FAILED',
+      message: '软件已正常启动，但无法解析 Bangumi 服务器地址（DNS 解析失败）。请检查网络或 DNS 后点击重试。',
+      hint: '确认本机网络可正常打开 bgm.tv；不会影响已有本地数据，也可先跳过绑定稍后再试。',
+    };
+  }
+  if (
+    code.startsWith('CERT_') ||
+    code.startsWith('ERR_TLS_') ||
+    code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
+    code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+    code === 'SELF_SIGNED_CERT_IN_CHAIN' ||
+    /certificate|tls|ssl|handshake/i.test(msg)
+  ) {
+    return {
+      code: 'TLS_ERROR',
+      message: '软件已正常启动，但与 Bangumi 建立安全连接失败（TLS/证书异常）。请检查系统时间或网络环境后重试。',
+      hint: '请核对系统日期时间是否准确、或网络代理证书配置；不会损坏本地数据。',
+    };
+  }
+  return {
+    code: 'NETWORK_FAILED',
+    message: '软件已正常启动，但目前无法连接 Bangumi。请检查网络是否能够正常访问 Bangumi，然后点击重试。',
+    hint: '这不是账号或 Token 错误；确认可访问 Bangumi 后重新检测或同步即可，无需重装软件。',
+  };
+}
+
+/**
+ * Safely reconnect an existing compatible Bangumi Analyzer directory (e.g. C:\BangumiAnalyzer)
+ * without re-extracting, re-syncing, migrating, or modifying user databases/configs.
+ */
+export async function reconnectExistingInstall(rawDir, companionHome) {
+  const resolved = resolve(String(rawDir ?? '').trim());
+  if (!resolved) {
+    return { ok: false, code: 'INVALID_DIR', error: '请选择有效的 Analyzer 安装目录' };
+  }
+  const required = [
+    join(resolved, 'release.json'),
+    join(resolved, 'checksums.json'),
+    join(resolved, 'runtime', 'node.exe'),
+    join(resolved, 'packages', 'server', 'dist', 'index.js'),
+  ];
+  for (const reqPath of required) {
+    try {
+      await access(reqPath, fsConst.R_OK);
+    } catch {
+      return {
+        ok: false,
+        code: 'NOT_ANALYZER_DIR',
+        error: '该文件夹不是完整的 Bangumi Analyzer 安装目录',
+        hint: '请选择包含 release.json、runtime 与 data 文件夹的原 Analyzer 安装目录（不会接管普通非空文件夹）。',
+      };
+    }
+  }
+  let relMeta = null;
+  try {
+    relMeta = JSON.parse(await readFile(join(resolved, 'release.json'), 'utf8'));
+  } catch {
+    return { ok: false, code: 'INVALID_RELEASE', error: '无法读取目录中的 release.json，请确认安装目录完整' };
+  }
+  if (relMeta?.product !== 'Bangumi Analyzer') {
+    return { ok: false, code: 'INCOMPATIBLE_PRODUCT', error: '该目录不属于兼容的 Bangumi Analyzer 发行版本' };
+  }
+
+  // Verify database exists (read-only access check; never creates or modifies DB)
+  const dbPath = join(resolved, 'data', 'bangumi.db');
+  let hasDb = false;
+  try {
+    await access(dbPath, fsConst.R_OK);
+    hasDb = true;
+  } catch {
+    hasDb = false;
+  }
+
+  // Read ONLY non-secret display metadata from data/config.json if present
+  let nickname = '';
+  let username = '';
+  let uid = null;
+  let aiConfigured = false;
+  let aiModel = '';
+  try {
+    const cfg = JSON.parse(await readFile(join(resolved, 'data', 'config.json'), 'utf8'));
+    nickname = String(cfg?.nickname ?? '').trim();
+    username = String(cfg?.username ?? '').trim();
+    uid = typeof cfg?.uid === 'number' ? cfg.uid : null;
+    aiConfigured = Boolean(cfg?.ai?.apiKey || cfg?.ai?.baseUrl);
+    aiModel = String(cfg?.ai?.model ?? '');
+  } catch {
+    /* optional config.json */
+  }
+
+  // Backup existing companion.json if present before updating association
+  const cfgFile = configPathFor(companionHome);
+  try {
+    await access(cfgFile, fsConst.R_OK);
+    await copyFile(cfgFile, `${cfgFile}.bak-${Date.now()}`);
+  } catch {
+    /* no prior companion.json */
+  }
+
+  const next = await writeCompanionState(companionHome, {
+    firstRunCompleted: true,
+    installDir: resolved,
+    nickname,
+    username,
+    uid,
+    aiConfigured,
+    aiModel,
+    autoStart: true,
+    installedAt: new Date().toISOString(),
+  });
+  return {
+    ok: true,
+    installDir: resolved,
+    hasDatabase: hasDb,
+    analyzerVersion: String(relMeta.version ?? '2.0.0'),
+    distributionRevision: Number(relMeta.distributionRevision ?? 2),
+    state: next,
+  };
+}
+
 export async function runRealEnvCheck(id, companionHome, targetDir, zipPath = DEFAULT_R2_ZIP) {
   switch (id) {
     case 'os': {
@@ -296,11 +434,14 @@ export async function runRealEnvCheck(id, companionHome, targetDir, zipPath = DE
           signal: AbortSignal.timeout(6000),
         });
         const ms = Date.now() - t0;
-        return r.ok
-          ? { state: 'ok', detail: `api.bgm.tv 连通正常 · ${ms} ms` }
-          : { state: 'warn', detail: `api.bgm.tv 返回 HTTP ${r.status}`, fix: '可先完成本地安装，稍后再同步收藏' };
-      } catch {
-        return { state: 'warn', detail: '暂无法连接 api.bgm.tv', fix: '可先继续本地安装，联网后再绑定与同步' };
+        if (r.ok) return { state: 'ok', detail: `api.bgm.tv 连通正常 · ${ms} ms` };
+        if (r.status === 429) {
+          return { state: 'warn', detail: 'Bangumi 接口限流 (HTTP 429)', fix: '请稍等 1–2 分钟再同步；可先继续完成本地安装' };
+        }
+        return { state: 'warn', detail: `Bangumi 服务暂不可用 (HTTP ${r.status})`, fix: '可先完成本地安装，稍后再同步收藏' };
+      } catch (err) {
+        const diag = classifyBangumiNetworkError(err);
+        return { state: 'warn', detail: `${diag.code}: 暂无法连接 api.bgm.tv`, fix: diag.message };
       }
     }
     default:
@@ -324,6 +465,22 @@ export async function verifyRealBangumiAccount({ username, token }) {
         code: 'NOT_FOUND',
         message: `找不到 Bangumi 用户「${user}」`,
         hint: '请填个人主页 URL 最后一段用户名或数字 UID，不要填邮箱或昵称。',
+      };
+    }
+    if (uRes.status === 429) {
+      return {
+        ok: false,
+        code: 'RATE_LIMIT',
+        message: 'Bangumi 接口请求过于频繁（HTTP 429 限流）',
+        hint: '请稍等 1–2 分钟后点击重试，不会影响已有本地数据。',
+      };
+    }
+    if (uRes.status >= 500) {
+      return {
+        ok: false,
+        code: 'SERVER_ERROR',
+        message: `Bangumi 服务器暂时异常（HTTP ${uRes.status}）`,
+        hint: '这不是你的账号或 Token 错误，请稍后点击重试；也可先跳过绑定完成本地安装。',
       };
     }
     if (!uRes.ok) {
@@ -383,12 +540,12 @@ export async function verifyRealBangumiAccount({ username, token }) {
       },
     };
   } catch (err) {
-    const isTimeout = err?.name === 'TimeoutError' || err?.name === 'AbortError';
+    const diag = classifyBangumiNetworkError(err);
     return {
       ok: false,
-      code: 'TIMEOUT',
-      message: isTimeout ? '连接 Bangumi 超时' : '无法连接到 Bangumi 服务器',
-      hint: '请检查网络或代理；也可先点击「稍后再绑定」完成本地安装。',
+      code: diag.code,
+      message: diag.message,
+      hint: diag.hint,
     };
   }
 }

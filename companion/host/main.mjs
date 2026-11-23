@@ -14,6 +14,7 @@ import {
   pickInstallDir,
   R2_ZIP_HASH,
   readCompanionState,
+  reconnectExistingInstall,
   removeDesktopShortcut,
   resolveCompanionHome,
   runRealEnvCheck,
@@ -58,6 +59,7 @@ const PRODUCT_METHODS = new Set([
   'runEnvCheck',
   'validateInstallDir',
   'pickInstallDir',
+  'reconnectExistingInstall',
   'verifyBangumiAccount',
   'testAiConnection',
   'installAndExtract',
@@ -550,6 +552,13 @@ try {
           return await validateInstallDir(args.rawPath, state.installDir);
         case 'pickInstallDir':
           return await pickInstallDir(win);
+        case 'reconnectExistingInstall': {
+          const res = await reconnectExistingInstall(args.installDir, options.companionHome);
+          if (res.ok && res.installDir) {
+            bindEngine(new BridgeEngine({ packageRoot: res.installDir, port: options.port }));
+          }
+          return res;
+        }
         case 'verifyBangumiAccount':
           return await verifyRealBangumiAccount({ username: args.username, token: args.token });
         case 'testAiConnection':

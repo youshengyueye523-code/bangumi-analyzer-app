@@ -5,9 +5,12 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
+  classifyBangumiNetworkError,
   DEFAULT_R2_ZIP,
   extractVerifiedPackage,
   inspectSessionLock,
+  readCompanionState,
+  reconnectExistingInstall,
   SetupError,
   validateInstallDir,
 } from '../setup-service.mjs';
@@ -98,4 +101,53 @@ test('Stage 3.1: extractVerifiedPackage protects unrelated non-empty dir, recove
     await rm(unrelated, { recursive: true, force: true });
     await rm(target, { recursive: true, force: true });
   }
+});
+
+test('P0.5: reconnectExistingInstall rejects unrelated dirs and safely reconnects valid Analyzer dir without copying secrets', async () => {
+  await mkdir(WORK_BASE, { recursive: true });
+  const unrelated = await mkdtemp(join(WORK_BASE, 'reconnect-bad-'));
+  const validDir = await mkdtemp(join(WORK_BASE, 'reconnect-good-'));
+  const compHome = await mkdtemp(join(WORK_BASE, 'reconnect-home-'));
+  try {
+    await writeFile(join(unrelated, 'notes.txt'), 'unrelated');
+    const bad = await reconnectExistingInstall(unrelated, compHome);
+    assert.equal(bad.ok, false);
+    assert.equal(bad.code, 'NOT_ANALYZER_DIR');
+
+    await mkdir(join(validDir, 'runtime'), { recursive: true });
+    await mkdir(join(validDir, 'packages', 'server', 'dist'), { recursive: true });
+    await mkdir(join(validDir, 'data'), { recursive: true });
+    await writeFile(join(validDir, 'release.json'), JSON.stringify({ product: 'Bangumi Analyzer', version: '2.0.0', distributionRevision: 2 }));
+    await writeFile(join(validDir, 'checksums.json'), '{}');
+    await writeFile(join(validDir, 'runtime', 'node.exe'), 'stub');
+    await writeFile(join(validDir, 'packages', 'server', 'dist', 'index.js'), 'stub');
+    await writeFile(join(validDir, 'data', 'bangumi.db'), 'immutable-db-bytes');
+    await writeFile(join(validDir, 'data', 'config.json'), JSON.stringify({ username: 'veteran', nickname: '老用户', token: 'secret-tok', ai: { apiKey: 'secret-key', model: 'm1' } }));
+
+    const res = await reconnectExistingInstall(validDir, compHome);
+    assert.equal(res.ok, true);
+    assert.equal(res.hasDatabase, true);
+    assert.equal(res.state.firstRunCompleted, true);
+    assert.equal(res.state.installDir, validDir);
+    assert.equal(res.state.nickname, '老用户');
+    assert.equal('token' in res.state, false);
+    assert.equal('aiKey' in res.state, false);
+    assert.equal(await readFile(join(validDir, 'data', 'bangumi.db'), 'utf8'), 'immutable-db-bytes');
+    const persisted = await readCompanionState(compHome);
+    assert.equal(persisted.firstRunCompleted, true);
+    assert.equal(persisted.installDir, validDir);
+  } finally {
+    await rm(unrelated, { recursive: true, force: true });
+    await rm(validDir, { recursive: true, force: true });
+    await rm(compHome, { recursive: true, force: true });
+  }
+});
+
+test('P2.4: classifyBangumiNetworkError distinguishes DNS, timeout, TLS, and generic connection errors cleanly', () => {
+  assert.equal(classifyBangumiNetworkError({ cause: { code: 'ENOTFOUND' } }).code, 'DNS_FAILED');
+  assert.equal(classifyBangumiNetworkError({ name: 'TimeoutError' }).code, 'TIMEOUT');
+  assert.equal(classifyBangumiNetworkError({ cause: { code: 'CERT_HAS_EXPIRED' } }).code, 'TLS_ERROR');
+  const net = classifyBangumiNetworkError({ cause: { code: 'ECONNREFUSED' } });
+  assert.equal(net.code, 'NETWORK_FAILED');
+  assert.match(net.message, /软件已正常启动，但目前无法连接 Bangumi/);
 });

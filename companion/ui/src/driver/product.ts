@@ -159,6 +159,17 @@ export interface CompanionProductBridge {
   runEnvCheck(args: { id: string; targetDir?: string }): Promise<RealEnvCheckResult>;
   validateInstallDir(args: { rawPath: string }): Promise<DirValidationResult>;
   pickInstallDir(): Promise<{ canceled: boolean; path: string | null }>;
+  reconnectExistingInstall(args: { installDir: string }): Promise<{
+    ok: boolean;
+    installDir?: string;
+    hasDatabase?: boolean;
+    analyzerVersion?: string;
+    distributionRevision?: number;
+    state?: CompanionPersistedState;
+    code?: string;
+    error?: string;
+    hint?: string;
+  }>;
   verifyBangumiAccount(args: { username: string; token?: string }): Promise<VerifyAccountResponse>;
   testAiConnection(args: { baseUrl: string; model: string; key: string }): Promise<TestAiResponse>;
   installAndExtract(args: { installDir: string }): Promise<{ ok: boolean; installDir?: string; state?: CompanionPersistedState; code?: string; error?: string; hint?: string }>;

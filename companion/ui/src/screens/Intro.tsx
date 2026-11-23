@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowRight, FastForward, Sparkles } from 'lucide-react';
+import { ArrowRight, FastForward, FolderCheck, Sparkles } from 'lucide-react';
 import { Button, Kbd, LogoMark, cx } from '../components/ui';
 import { Mascot } from '../components/Mascot';
+import { getProductBridge } from '../driver/product';
+import { toast } from '../state/feedback';
 import { useFlow } from '../state/flow';
 import { prefs, usePrefs } from '../state/prefs';
 
@@ -16,7 +18,9 @@ const TITLE = 'Bangumi Analyzer';
 export function IntroScreen() {
   const flow = useFlow();
   const p = usePrefs();
+  const pb = getProductBridge();
   const [phase, setPhase] = useState(p.reduceMotion ? 4 : 0);
+  const [reconnecting, setReconnecting] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
@@ -33,6 +37,35 @@ export function IntroScreen() {
     setPhase(4);
   };
   const start = () => flow.go('env');
+
+  const reconnect = async () => {
+    if (!pb || reconnecting) return;
+    setReconnecting(true);
+    try {
+      const picked = await pb.pickInstallDir();
+      if (picked.canceled || !picked.path) return;
+      const res = await pb.reconnectExistingInstall({ installDir: picked.path });
+      if (!res.ok || !res.state) {
+        toast('danger', res.error ?? '未能连接该安装目录', res.hint ?? '请选择原 Analyzer 安装目录（如 C:\\BangumiAnalyzer）');
+        return;
+      }
+      const s = res.state;
+      prefs.set({
+        firstRunCompleted: true,
+        installDir: s.installDir || picked.path,
+        nickname: s.nickname || '',
+        username: s.username || '',
+        collections: s.collections || 0,
+        aiConfigured: Boolean(s.aiConfigured),
+        aiModel: s.aiModel || '',
+        autoStart: s.autoStart,
+      });
+      toast('success', '已重新连接原 Analyzer 安装', '保留原数据库与配置，无需重新同步');
+      flow.go('home');
+    } finally {
+      setReconnecting(false);
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,11 +126,15 @@ export function IntroScreen() {
             <Button variant="primary" size="xl" onClick={start} trailing={<ArrowRight size={18} />} kbd="Enter">
               开始设置
             </Button>
-            {p.firstRunCompleted && (
+            {p.firstRunCompleted ? (
               <Button variant="secondary" size="xl" onClick={() => flow.go('home')}>
                 直接进入首页
               </Button>
-            )}
+            ) : pb ? (
+              <Button variant="secondary" size="xl" icon={<FolderCheck size={16} />} disabled={reconnecting} onClick={reconnect}>
+                {reconnecting ? '正在核验目录…' : '连接已有安装'}
+              </Button>
+            ) : null}
           </div>
           <div className="intro-cta-meta">
             <span>约 3 分钟 · 全程可返回修改</span>

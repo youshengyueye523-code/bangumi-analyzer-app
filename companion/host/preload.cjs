@@ -65,6 +65,7 @@ if (process.isMainFrame) {
     runEnvCheck: invokeProduct('runEnvCheck'),
     validateInstallDir: invokeProduct('validateInstallDir'),
     pickInstallDir: invokeProduct('pickInstallDir'),
+    reconnectExistingInstall: invokeProduct('reconnectExistingInstall'),
     verifyBangumiAccount: invokeProduct('verifyBangumiAccount'),
     testAiConnection: invokeProduct('testAiConnection'),
     installAndExtract: invokeProduct('installAndExtract'),
