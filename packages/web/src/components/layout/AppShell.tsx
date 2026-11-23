@@ -87,7 +87,7 @@ function SidebarFooter() {
       to="/me"
       title={`个人资料：${displayName}`}
       className={cn(
-        'mx-3 mb-4 flex items-center gap-2.5 rounded-control border border-border bg-surface-2 px-3 py-2.5',
+        'mx-4 mb-8 flex items-center gap-2.5 rounded-control border border-border bg-surface-2 px-3 py-2.5',
         'transition-colors hover:border-border-strong hover:bg-surface-3',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
       )}
