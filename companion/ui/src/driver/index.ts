@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { createMockDriver } from './mockDriver';
 import { createCodexDriver } from './codexDriver';
-import { EMPTY_STATUS, type AnalyzerStatus, type CompanionDriver } from './types';
+import { EMPTY_STATUS, type AnalyzerRoute, type AnalyzerStatus, type CompanionDriver } from './types';
 import { wait } from '../mock/scenario';
 
 export * from './types';
@@ -36,8 +36,8 @@ function withReactiveBus(inner: CompanionDriver): CompanionDriver & { hasNativeP
     async stopAnalyzer() {
       return publish(await inner.stopAnalyzer());
     },
-    async openAnalyzer() {
-      const res = await inner.openAnalyzer();
+    async openAnalyzer(route?: AnalyzerRoute) {
+      const res = await inner.openAnalyzer(route);
       if (res.status) publish(res.status);
       return res;
     },
@@ -93,8 +93,10 @@ const isTransitioning = (s: AnalyzerStatus['state']) =>
  *   - 若底层未提供原生推送（hasNativePush=false），自动按 API.md 建议轮询 getStatus
  *     （过渡态 350ms，稳态 1500ms）
  */
-export function useAnalyzerStatus(): AnalyzerStatus {
-  const driver = useDriver();
+export function useAnalyzerStatus(driverOverride?: CompanionDriver): AnalyzerStatus {
+  const ctxDriver = useContext(DriverContext);
+  const driver = driverOverride ?? ctxDriver;
+  if (!driver) throw new Error('DriverContext missing');
   const [status, setStatus] = useState<AnalyzerStatus>(EMPTY_STATUS);
   const stateRef = useRef(status.state);
   stateRef.current = status.state;

@@ -51,7 +51,7 @@ export function TitleBar({ subtle, winCtrl }: { subtle?: boolean; winCtrl: Windo
         <span className="tb-name">
           Bangumi Analyzer <em>Companion</em>
         </span>
-        <span className="tb-ver">{getProductBridge() ? 'v2.0' : 'M1'}</span>
+        <span className="tb-ver">{getProductBridge() ? 'v2.0.0' : 'M1'}</span>
         {driver.kind === 'mock' ? (
           <MockTag title="当前使用 mock driver：不启动进程、不访问网络、不写入文件">MOCK DRIVER</MockTag>
         ) : (

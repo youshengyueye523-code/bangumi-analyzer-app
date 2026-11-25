@@ -69,9 +69,31 @@ export function Mascot({
   const [live2dEpoch, setLive2dEpoch] = useState(0);
   const contextRetryRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
+  useEffect(() => {
+    mountedRef.current = true;
+    const unsubGpu = window.companionProduct?.onProductEvent?.((evt) => {
+      if (!mountedRef.current) return;
+      const payload = (evt.payload && typeof evt.payload === 'object' ? evt.payload : null) as { crashed?: boolean } | null;
+      if (evt.type === 'gpu-status' && payload?.crashed) {
+        if (retryTimerRef.current) {
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+        setLive2dReady(false);
+        setLive2dUnavailable(true);
+        setFallbackDetail('gpu_disabled:GPU_PROCESS_CRASHED');
+      }
+    });
+    return () => {
+      mountedRef.current = false;
+      unsubGpu?.();
+      if (retryTimerRef.current) {
+        clearTimeout(retryTimerRef.current);
+        retryTimerRef.current = null;
+      }
+    };
   }, []);
 
   const handleLive2dReady = useCallback(() => {
@@ -82,18 +104,35 @@ export function Mascot({
 
   const handleLive2dFallback = useCallback((reason: string, detail?: string) => {
     setLive2dReady(false);
-    if (reason === 'gpu_context_lost' && contextRetryRef.current < 2) {
+    if (retryTimerRef.current) {
+      clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    const recoverable = reason === 'gpu_context_lost' || reason === 'webgl_unavailable';
+    if (recoverable && contextRetryRef.current < 3) {
+      const attempt = contextRetryRef.current;
       contextRetryRef.current += 1;
-      if (retryTimerRef.current) clearTimeout(retryTimerRef.current);
-      const triggerRemount = () => {
-        if (document.hidden) return;
-        document.removeEventListener('visibilitychange', triggerRemount);
-        retryTimerRef.current = setTimeout(() => setLive2dEpoch((e) => e + 1), 160);
+      const delayMs = [350, 900, 1800][attempt] ?? 1800;
+      const scheduleRemount = () => {
+        if (!mountedRef.current || document.hidden) return;
+        document.removeEventListener('visibilitychange', scheduleRemount);
+        retryTimerRef.current = setTimeout(async () => {
+          retryTimerRef.current = null;
+          if (!mountedRef.current) return;
+          const st = await window.companionModel?.getStatus().catch(() => null);
+          if (!mountedRef.current) return;
+          if (st?.gpuStatus && st.gpuStatus.webglAllowed === false) {
+            setLive2dUnavailable(true);
+            setFallbackDetail(`gpu_disabled:${st.gpuStatus.reason || 'GPU_WEBGL_DISABLED'}`);
+            return;
+          }
+          setLive2dEpoch((e) => e + 1);
+        }, delayMs);
       };
       if (document.hidden) {
-        document.addEventListener('visibilitychange', triggerRemount, { once: true });
+        document.addEventListener('visibilitychange', scheduleRemount, { once: true });
       } else {
-        triggerRemount();
+        scheduleRemount();
       }
       return;
     }

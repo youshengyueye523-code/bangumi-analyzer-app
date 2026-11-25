@@ -5,6 +5,9 @@ export interface WindowState {
   isMaximized: boolean;
   isFullScreen: boolean;
   isMinimized: boolean;
+  contentWidth?: number;
+  contentHeight?: number;
+  scaleFactor?: number;
 }
 
 export interface CompanionWindowBridge {
@@ -13,6 +16,7 @@ export interface CompanionWindowBridge {
   toggleMaximize(): Promise<WindowState>;
   toggleFullscreen(): Promise<WindowState>;
   exitFullscreen(): Promise<WindowState>;
+  rendererReady?(): Promise<WindowState>;
   close(): Promise<WindowState>;
   onState(cb: (s: WindowState) => void): () => void;
 }
@@ -104,6 +108,10 @@ export function useWindowController() {
     else toast('info', '关闭窗口（模拟）', '桌面宿主中将先安全停止受管 Analyzer 再退出。');
   };
 
+  const rendererReady = () => {
+    if (native) void native.rendererReady?.();
+  };
+
   return {
     isNativeHost: Boolean(native),
     ...state,
@@ -111,6 +119,7 @@ export function useWindowController() {
     toggleMaximize,
     toggleFullscreen,
     exitFullscreen,
+    rendererReady,
     close,
   };
 }

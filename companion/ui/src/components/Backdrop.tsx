@@ -15,39 +15,31 @@ export function Backdrop({ mode, reduceMotion }: { mode: 'intro' | 'setup' | 'ho
     const ctx = cv.getContext('2d')!;
     let w = 0,
       h = 0,
-      raf = 0;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    type Star = { x: number; y: number; r: number; p: number; s: number; warm: boolean };
-    let stars: Star[] = [];
+      raf = 0,
+      resizeRaf = 0,
+      winMinimized = false,
+      disposed = false;
+    type Star = { nx: number; ny: number; r: number; p: number; s: number; warm: boolean };
+    const stars: Star[] = Array.from({ length: 220 }, () => ({
+      nx: Math.random(),
+      ny: Math.pow(Math.random(), 1.6) * 0.85,
+      r: Math.random() < 0.08 ? 1.4 + Math.random() : 0.4 + Math.random() * 0.8,
+      p: Math.random() * Math.PI * 2,
+      s: 0.6 + Math.random() * 1.6,
+      warm: Math.random() < 0.18,
+    }));
     let shooting: { x: number; y: number; vx: number; vy: number; life: number } | null = null;
 
-    const resize = () => {
-      w = cv.clientWidth;
-      h = cv.clientHeight;
-      cv.width = w * dpr;
-      cv.height = h * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      const n = Math.round((w * h) / 7000);
-      stars = Array.from({ length: n }, () => ({
-        x: Math.random() * w,
-        y: Math.pow(Math.random(), 1.6) * h * 0.85,
-        r: Math.random() < 0.08 ? 1.4 + Math.random() : 0.4 + Math.random() * 0.8,
-        p: Math.random() * Math.PI * 2,
-        s: 0.6 + Math.random() * 1.6,
-        warm: Math.random() < 0.18,
-      }));
-    };
-    resize();
-    const ro = new ResizeObserver(resize);
-    ro.observe(cv);
-
     const light = () => document.documentElement.classList.contains('light');
-    const draw = (t: number) => {
+    const drawFrame = (t: number) => {
+      if (w < 2 || h < 2) return;
       ctx.clearRect(0, 0, w, h);
       const isLight = light();
       const m = modeRef.current;
       const k = m === 'intro' || m === 'ready' ? 1 : m === 'home' ? 0.75 : 0.55;
-      for (const st of stars) {
+      const activeCount = Math.min(stars.length, Math.max(70, Math.round((w * h) / 7500)));
+      for (let i = 0; i < activeCount; i += 1) {
+        const st = stars[i]!;
         const tw = reduceMotion ? 0.8 : 0.55 + 0.45 * Math.sin(st.p + (t / 1000) * st.s);
         const a = tw * k * (isLight ? 0.35 : 1);
         ctx.beginPath();
@@ -56,7 +48,7 @@ export function Backdrop({ mode, reduceMotion }: { mode: 'intro' | 'setup' | 'ho
           : st.warm
             ? `rgba(249,182,200,${a})`
             : `rgba(220,228,255,${a})`;
-        ctx.arc(st.x, st.y, st.r, 0, Math.PI * 2);
+        ctx.arc(st.nx * w, st.ny * h, st.r, 0, Math.PI * 2);
         ctx.fill();
       }
       if (!reduceMotion && !isLight) {
@@ -80,12 +72,96 @@ export function Backdrop({ mode, reduceMotion }: { mode: 'intro' | 'setup' | 'ho
           if (s.life <= 0) shooting = null;
         }
       }
-      raf = requestAnimationFrame(draw);
     };
-    raf = requestAnimationFrame(draw);
+
+    const stopLoop = () => {
+      if (raf) {
+        cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+
+    const tick = (t: number) => {
+      raf = 0;
+      if (disposed || document.hidden || winMinimized) return;
+      drawFrame(t);
+      if (!reduceMotion) {
+        raf = requestAnimationFrame(tick);
+      }
+    };
+
+    const scheduleFrame = () => {
+      if (disposed || document.hidden || winMinimized) return;
+      if (reduceMotion) {
+        drawFrame(performance.now());
+        return;
+      }
+      if (!raf) raf = requestAnimationFrame(tick);
+    };
+
+    const resize = () => {
+      if (disposed || document.hidden || winMinimized) return;
+      const cw = cv.clientWidth;
+      const ch = cv.clientHeight;
+      if (cw < 2 || ch < 2) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const pw = Math.round(cw * dpr);
+      const ph = Math.round(ch * dpr);
+      if (cw !== w || ch !== h || cv.width !== pw || cv.height !== ph) {
+        w = cw;
+        h = ch;
+        cv.width = pw;
+        cv.height = ph;
+      }
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      if (reduceMotion) drawFrame(performance.now());
+    };
+
+    const scheduleResize = () => {
+      if (resizeRaf) return;
+      resizeRaf = requestAnimationFrame(() => {
+        resizeRaf = 0;
+        resize();
+        scheduleFrame();
+      });
+    };
+
+    resize();
+    scheduleFrame();
+
+    const ro = new ResizeObserver(scheduleResize);
+    ro.observe(cv);
+
+    const onVisibility = () => {
+      if (document.hidden || winMinimized) {
+        stopLoop();
+      } else {
+        scheduleResize();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    const unsubWin = window.companionWindow?.onState((ws) => {
+      const nextMin = Boolean(ws.isMinimized);
+      if (nextMin !== winMinimized) {
+        winMinimized = nextMin;
+        onVisibility();
+      } else if (!nextMin) {
+        scheduleResize();
+      }
+    });
+    const themeObs = new MutationObserver(() => {
+      if (reduceMotion) drawFrame(performance.now());
+    });
+    themeObs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
     return () => {
-      cancelAnimationFrame(raf);
+      disposed = true;
+      stopLoop();
+      if (resizeRaf) cancelAnimationFrame(resizeRaf);
       ro.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
+      unsubWin?.();
+      themeObs.disconnect();
     };
   }, [reduceMotion]);
 

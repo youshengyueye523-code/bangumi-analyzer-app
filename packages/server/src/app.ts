@@ -113,6 +113,18 @@ export async function buildApp(options: BuildAppOptions): Promise<FastifyInstanc
     };
   });
 
+  app.get('/api/theme.js', async (_request, reply) => {
+    let mode = 'system';
+    try {
+      mode = loadConfig().theme;
+    } catch {
+      mode = 'system';
+    }
+    reply.header('Cache-Control', 'no-store');
+    reply.type('application/javascript; charset=utf-8');
+    return `window.__BANGUMI_INITIAL_THEME__=${JSON.stringify(mode)};`;
+  });
+
   app.addHook('onSend',async (request,reply,payload)=>{
     const url=request.routeOptions.url ?? '';
     if (url.startsWith('/api/') && !url.startsWith('/api/wallpaper/')) reply.header('Cache-Control','no-store');

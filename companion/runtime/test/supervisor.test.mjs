@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { mkdir, readFile, symlink, writeFile, rm, access } from 'node:fs/promises';
-import { AnalyzerSupervisor, serviceEnvironment } from '../supervisor.mjs';
+import { ALLOWED_ROUTES, AnalyzerSupervisor, serviceEnvironment } from '../supervisor.mjs';
 import { checkPackage, sha256 } from '../package-check.mjs';
 import { delay, fixture, ready, rehash, repo, until, work } from './helpers.mjs';
 
@@ -59,7 +59,7 @@ test('M0 bounded safety and lifecycle tests (synthetic packages, not product acc
     }
     await writeFile(file, original);
     const releasePath = join(root, 'release.json'), release = await readFile(releasePath);
-    await writeFile(releasePath, JSON.stringify({ ...JSON.parse(release), distributionRevision: 3 })); await rehash(root);
+    await writeFile(releasePath, JSON.stringify({ ...JSON.parse(release), distributionRevision: 6 })); await rehash(root);
     await assert.rejects(checkPackage(root), { code: 'PACKAGE_UNSUPPORTED' });
     await writeFile(releasePath, release); await rehash(root);
   });
@@ -201,6 +201,31 @@ test('M0 bounded safety and lifecycle tests (synthetic packages, not product acc
       await s.startAnalyzer(); await ready(s);
       const opening = s.openAnalyzer(); await delay(30); const stopping = s.stopAnalyzer();
       assert.equal((await opening).ok, false); await stopping; assert.equal(opens, 0);
+    } finally { await s.stopAnalyzer(); }
+  });
+  await t.test('openAnalyzer routes all six allowlisted paths to active runtime port and rejects arbitrary routes (F01)', async () => {
+    const target = await fixture(dir, 'routes', normalService);
+    const opened = [];
+    const s = new AnalyzerSupervisor({ ...config, packageRoot: target, openBrowser: async (u) => { opened.push(u); } });
+    try {
+      const notReady = await s.openAnalyzer('/library');
+      assert.equal(notReady.ok, false);
+      assert.equal(notReady.error.code, 'NOT_READY');
+      assert.equal(opened.length, 0);
+
+      await s.startAnalyzer(); await ready(s);
+      const base = s.getStatus().url.replace(/\/$/, '');
+      for (const route of ALLOWED_ROUTES) {
+        const res = await s.openAnalyzer(route);
+        assert.equal(res.ok, true);
+        assert.equal(res.openedUrl, `${base}${route}`);
+      }
+      assert.deepEqual(opened, [...ALLOWED_ROUTES].map((r) => `${base}${r}`));
+
+      for (const badRoute of ['/settings', '/library?next=http://evil', '//evil.com', 'https://evil.invalid/']) {
+        await assert.rejects(s.openAnalyzer(badRoute), { code: 'OPEN_FAILED' });
+      }
+      assert.equal(opened.length, ALLOWED_ROUTES.size);
     } finally { await s.stopAnalyzer(); }
   });
   console.log(JSON.stringify({ evidence: 'synthetic-safety', work: dir, checksumsSha256: await sha256(join(root, 'checksums.json')) }));

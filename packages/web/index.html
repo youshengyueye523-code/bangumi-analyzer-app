@@ -10,13 +10,25 @@
       rel="icon"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236d8bff'/%3E%3Cpath d='M10 22V10h5.5a3.5 3.5 0 0 1 2.2 6.2A3.6 3.6 0 0 1 16 22z' fill='white'/%3E%3C/svg%3E"
     />
+    <script src="/api/theme.js"></script>
     <script>
-      // 提前应用主题，避免首屏闪烁
+      // 提前应用本机配置或当前 Origin 存储的主题，避免跨随机端口首屏闪烁
       (function () {
         try {
-          var stored = localStorage.getItem('bangumi-analyzer-theme');
-          var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-          var theme = stored === 'light' || stored === 'dark' ? stored : prefersDark ? 'dark' : 'light';
+          var serverTheme = window.__BANGUMI_INITIAL_THEME__;
+          var mode = null;
+          if (serverTheme === 'dark' || serverTheme === 'light') {
+            mode = serverTheme;
+            localStorage.setItem('bangumi-analyzer-theme', serverTheme);
+          } else if (serverTheme === 'system') {
+            mode = 'system';
+            localStorage.removeItem('bangumi-analyzer-theme');
+          } else {
+            var stored = localStorage.getItem('bangumi-analyzer-theme');
+            mode = stored === 'light' || stored === 'dark' ? stored : 'system';
+          }
+          var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          var theme = mode === 'dark' || mode === 'light' ? mode : prefersDark ? 'dark' : 'light';
           document.documentElement.classList.toggle('dark', theme === 'dark');
           document.documentElement.dataset.theme = theme;
         } catch (error) {

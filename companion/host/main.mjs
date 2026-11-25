@@ -7,12 +7,14 @@ import { BridgeEngine } from './engine.mjs';
 import { allowedRequest, CHANNEL, errorInfo, failureView, idle, toUi, UI_URL } from './contract.mjs';
 import { CSP, serveAsset, snapshotUi } from './assets.mjs';
 import {
+  ANALYZER_THEMES,
   createDesktopShortcut,
   DEFAULT_R2_ZIP,
   extractVerifiedPackage,
   inspectSessionLock,
   pickInstallDir,
   R2_ZIP_HASH,
+  readAnalyzerConfigTheme,
   readCompanionState,
   reconnectExistingInstall,
   removeDesktopShortcut,
@@ -22,6 +24,7 @@ import {
   testRealAiConnection,
   validateInstallDir,
   verifyRealBangumiAccount,
+  writeAnalyzerConfigThemeWhenStopped,
   writeCompanionState,
 } from './setup-service.mjs';
 import {
@@ -52,7 +55,7 @@ const PRODUCT_EVENT_CHANNEL = 'companion:v1:product-event';
 const MODEL_CHANNEL = 'companion:v1:model';
 const MODEL_METHODS = new Set(['getStatus', 'importCubismCore', 'loadPinkSakuraBundle']);
 const FPS_MODES = new Set(['auto', '30', '60', '120']);
-const WINDOW_ACTIONS = new Set(['getState', 'minimize', 'toggleMaximize', 'toggleFullscreen', 'exitFullscreen', 'close']);
+const WINDOW_ACTIONS = new Set(['getState', 'minimize', 'toggleMaximize', 'toggleFullscreen', 'exitFullscreen', 'rendererReady', 'close']);
 const PRODUCT_METHODS = new Set([
   'getCompanionState',
   'savePreferences',
@@ -86,10 +89,18 @@ let win, engine = null, closing = false, mayQuit = false;
 let entryUrl = UI_URL;
 let lastNormalBounds = null;
 let saveBoundsTimer = null;
+let syncStateTimers = [];
 let trackBounds = false;
+let restoreMaximizedAfterFullScreen = false;
+let resolveRendererReady = null;
+const rendererReadyPromise = new Promise((resolve) => { resolveRendererReady = resolve; });
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'companion', privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 for (const name of ['disable-background-networking', 'disable-component-update', 'no-default-browser-check']) app.commandLine.appendSwitch(name);
+if (process.platform === 'win32') {
+  // Prevent background DX12/Vulkan GPU info child-process probes from triggering transient exitCode 34 crashes on hybrid/virtual display rigs.
+  for (const name of ['disable-dx12-gpu-info-collection', 'disable-vulkan-gpu-info-collection']) app.commandLine.appendSwitch(name);
+}
 if (process.argv.includes('--allow-unsafe-swiftshader')) {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
 }
@@ -148,6 +159,8 @@ app.on('child-process-gone', (_event, details) => {
 
 function resolveBundledR2Zip(explicitPath) {
   if (explicitPath) return explicitPath;
+  const bundledR5 = join(here, '../bundle/Bangumi-Analyzer-2.0.0-windows-x64-r5.zip');
+  if (existsSync(bundledR5)) return bundledR5;
   const bundledR4 = join(here, '../bundle/Bangumi-Analyzer-2.0.0-windows-x64-r4.zip');
   if (existsSync(bundledR4)) return bundledR4;
   const bundledR3 = join(here, '../bundle/Bangumi-Analyzer-2.0.0-windows-x64-r3.zip');
@@ -269,13 +282,47 @@ function scheduleSaveBounds() {
 }
 
 function getWindowState() {
-  if (!win || win.isDestroyed()) return { isMaximized: false, isFullScreen: false, isMinimized: false };
-  return { isMaximized: win.isMaximized(), isFullScreen: win.isFullScreen(), isMinimized: win.isMinimized() };
+  if (!win || win.isDestroyed()) {
+    return { isMaximized: false, isFullScreen: false, isMinimized: false, contentWidth: 0, contentHeight: 0, scaleFactor: 1 };
+  }
+  const cb = win.getContentBounds();
+  let scaleFactor = 1;
+  try {
+    scaleFactor = screen.getDisplayMatching(win.getBounds())?.scaleFactor || 1;
+  } catch { /* ignore */ }
+  return {
+    isMaximized: win.isMaximized(),
+    isFullScreen: win.isFullScreen(),
+    isMinimized: win.isMinimized(),
+    contentWidth: cb.width,
+    contentHeight: cb.height,
+    scaleFactor,
+  };
 }
 
 function emitWindowState(wc) {
   if (wc && !wc.isDestroyed() && wc.mainFrame.url === entryUrl) {
     wc.send('companion:v1:window-state', getWindowState());
+  }
+}
+
+function clearSyncStateTimers() {
+  for (const t of syncStateTimers) clearTimeout(t);
+  syncStateTimers = [];
+}
+
+function scheduleWindowViewportSync(wc, forceRepaint = false) {
+  emitWindowState(wc);
+  clearSyncStateTimers();
+  for (const ms of [60, 180]) {
+    const t = setTimeout(() => {
+      if (!win || win.isDestroyed() || !wc || wc.isDestroyed()) return;
+      emitWindowState(wc);
+      if (forceRepaint && !win.isMinimized()) {
+        try { wc.invalidate(); } catch { /* ignore */ }
+      }
+    }, ms);
+    syncStateTimers.push(t);
   }
 }
 
@@ -422,11 +469,36 @@ try {
   wc.on('render-process-gone', () => void closeWindow());
   wc.on('page-title-updated', event => event.preventDefault());
 
-  for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'leave-full-screen', 'minimize', 'restore', 'hide', 'show']) {
-    win.on(ev, () => { scheduleSaveBounds(); emitWindowState(wc); });
+  for (const ev of ['maximize', 'unmaximize', 'enter-full-screen', 'minimize', 'restore', 'hide', 'show']) {
+    win.on(ev, () => {
+      scheduleSaveBounds();
+      scheduleWindowViewportSync(wc, ev !== 'minimize' && ev !== 'hide');
+    });
   }
-  win.on('resize', scheduleSaveBounds);
+  win.on('leave-full-screen', () => {
+    if (restoreMaximizedAfterFullScreen && win && !win.isDestroyed() && !win.isMaximized()) {
+      restoreMaximizedAfterFullScreen = false;
+      setImmediate(() => {
+        if (win && !win.isDestroyed() && !win.isFullScreen() && !win.isMaximized()) {
+          win.maximize();
+        }
+      });
+    } else {
+      restoreMaximizedAfterFullScreen = false;
+    }
+    scheduleSaveBounds();
+    scheduleWindowViewportSync(wc, true);
+  });
+  win.on('resize', () => { scheduleSaveBounds(); emitWindowState(wc); });
   win.on('move', scheduleSaveBounds);
+  const onDisplayChanged = () => {
+    if (win && !win.isDestroyed()) scheduleWindowViewportSync(wc, true);
+  };
+  screen.on('display-metrics-changed', onDisplayChanged);
+  win.on('closed', () => {
+    clearSyncStateTimers();
+    screen.removeListener('display-metrics-changed', onDisplayChanged);
+  });
   win.on('close', event => { saveWindowBoundsNow(); if (!mayQuit) { event.preventDefault(); void closeWindow(); } });
   app.on('before-quit', event => { saveWindowBoundsNow(); if (!mayQuit) { event.preventDefault(); void closeWindow(); } });
 
@@ -436,7 +508,27 @@ try {
     }
     engine = nextEngine;
     if (!engine) return;
-    engine.on('status', status => { if (engine === nextEngine && !wc.isDestroyed() && wc.mainFrame.url === entryUrl) wc.send('companion:v1:status', status); });
+    let lastSyncedRunningUrl = null;
+    const maybeSyncInitialTheme = async (status) => {
+      if (options.mode !== 'product' || status?.state !== 'running' || !status.url || lastSyncedRunningUrl === status.url) return;
+      lastSyncedRunningUrl = status.url;
+      try {
+        const curState = await readCompanionState(options.companionHome);
+        const cfgTheme = await readAnalyzerConfigTheme(curState.installDir);
+        if (!cfgTheme && curState.analyzerTheme && curState.analyzerTheme !== 'system') {
+          await fetchJson(`${status.url}api/config`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ theme: curState.analyzerTheme }),
+            timeoutMs: 5000,
+          });
+        }
+      } catch { /* non-fatal */ }
+    };
+    engine.on('status', status => {
+      if (engine === nextEngine && !wc.isDestroyed() && wc.mainFrame.url === entryUrl) wc.send('companion:v1:status', status);
+      void maybeSyncInitialTheme(status);
+    });
     engine.on('logs', logs => { if (engine === nextEngine && !wc.isDestroyed() && wc.mainFrame.url === entryUrl) wc.send('companion:v1:logs', logs); });
     if (!wc.isDestroyed() && wc.mainFrame.url === entryUrl) {
       wc.send('companion:v1:status', engine.status());
@@ -462,7 +554,11 @@ try {
     pending++;
     let timer;
     try {
-      const task = method === 'getLogs' ? Promise.resolve(engine.logs()) : engine[method]();
+      const task = method === 'getLogs'
+        ? Promise.resolve(engine.logs())
+        : method === 'openAnalyzer'
+          ? engine.openAnalyzer(payload.route ?? '/')
+          : engine[method]();
       const timeout = method === 'startAnalyzer' ? 90000 : method === 'stopAnalyzer' ? 65000 : method === 'openAnalyzer' ? 12000 : 10000;
       return await Promise.race([task, new Promise(resolve => {
         timer = setTimeout(() => resolve(method === 'openAnalyzer' ? { opened: false, url: '', error: errorInfo('HOST_TIMEOUT') }
@@ -482,15 +578,28 @@ try {
         win.minimize();
         break;
       case 'toggleMaximize':
-        if (win.isFullScreen()) win.setFullScreen(false);
-        else if (win.isMaximized()) win.unmaximize();
-        else win.maximize();
+        if (win.isFullScreen()) {
+          restoreMaximizedAfterFullScreen = false;
+          win.setFullScreen(false);
+        } else if (win.isMaximized()) {
+          win.unmaximize();
+        } else {
+          win.maximize();
+        }
         break;
       case 'toggleFullscreen':
-        win.setFullScreen(!win.isFullScreen());
+        if (win.isFullScreen()) {
+          win.setFullScreen(false);
+        } else {
+          restoreMaximizedAfterFullScreen = win.isMaximized();
+          win.setFullScreen(true);
+        }
         break;
       case 'exitFullscreen':
         if (win.isFullScreen()) win.setFullScreen(false);
+        break;
+      case 'rendererReady':
+        resolveRendererReady?.();
         break;
       case 'close':
         win.close();
@@ -531,6 +640,9 @@ try {
           if (typeof args.autoStart === 'boolean') patch.autoStart = args.autoStart;
           if (typeof args.autoOpen === 'boolean') patch.autoOpen = args.autoOpen;
           if (typeof args.updateFeedUrl === 'string') patch.updateFeedUrl = args.updateFeedUrl.trim();
+          if (typeof args.analyzerTheme === 'string' && ANALYZER_THEMES.has(args.analyzerTheme)) {
+            patch.analyzerTheme = args.analyzerTheme;
+          }
           if (typeof args.gpuMode === 'string' && GPU_MODES.has(args.gpuMode)) patch.gpuMode = args.gpuMode;
           if (typeof args.live2dFpsMode === 'string' && FPS_MODES.has(args.live2dFpsMode)) patch.live2dFpsMode = args.live2dFpsMode;
           if (typeof args.desktopShortcut === 'boolean') {
@@ -546,6 +658,19 @@ try {
             }
           }
           const next = await writeCompanionState(options.companionHome, patch);
+          if (patch.analyzerTheme) {
+            const st = engine?.status();
+            if (st?.state === 'running' && st.url) {
+              await fetchJson(`${st.url}api/config`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ theme: patch.analyzerTheme }),
+                timeoutMs: 5000,
+              }).catch(() => {});
+            } else if (next.installDir) {
+              await writeAnalyzerConfigThemeWhenStopped(next.installDir, patch.analyzerTheme);
+            }
+          }
           return { ok: true, state: next };
         }
         case 'runEnvCheck':
@@ -627,6 +752,12 @@ try {
             };
           }
           const cfgPatch = { onboardingSeen: true };
+          const effectiveTheme = typeof args.analyzerTheme === 'string' && ANALYZER_THEMES.has(args.analyzerTheme)
+            ? args.analyzerTheme
+            : state.analyzerTheme;
+          if (ANALYZER_THEMES.has(effectiveTheme) && effectiveTheme !== 'system') {
+            cfgPatch.theme = effectiveTheme;
+          }
           if (typeof args.username === 'string' && args.username.trim()) cfgPatch.username = args.username.trim();
           if (typeof args.token === 'string' && args.token.trim()) cfgPatch.token = args.token.trim();
           if (typeof args.nickname === 'string' && args.nickname.trim()) cfgPatch.nickname = args.nickname.trim();
@@ -952,11 +1083,17 @@ try {
   });
 
   await win.loadURL(entryUrl);
-  if (initial.isMaximized) win.maximize();
-  win.show();
+  await Promise.race([rendererReadyPromise, new Promise((resolve) => setTimeout(resolve, 450))]);
+  if (initial.isMaximized) {
+    win.showInactive();
+    win.maximize();
+    win.show();
+  } else {
+    win.show();
+  }
   win.focus();
   setTimeout(() => { trackBounds = true; }, 350);
-  emitWindowState(wc);
+  scheduleWindowViewportSync(wc, true);
   if (win.isVisible()) process.stdout.write('COMPANION_WINDOW_VISIBLE\n');
 } catch {
   process.stderr.write('COMPANION_HOST_FAILED\n');

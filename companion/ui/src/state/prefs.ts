@@ -17,6 +17,8 @@ export interface Prefs {
   /** 轻量界面提示音效（Web Audio 合成，无外部请求） */
   soundEnabled: boolean;
   theme: 'dark' | 'light';
+  /** Analyzer 网页端主题偏好（与 Companion 自身主题相互独立） */
+  analyzerTheme: 'system' | 'dark' | 'light';
   installDir: string;
   nickname: string;
   username: string;
@@ -36,6 +38,7 @@ const DEFAULT: Prefs = {
   live2dFpsMode: 'auto',
   soundEnabled: true,
   theme: 'dark',
+  analyzerTheme: 'system',
   installDir: 'D:\\Analyzer',
   nickname: '',
   username: '',

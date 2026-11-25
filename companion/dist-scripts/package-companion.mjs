@@ -1,9 +1,11 @@
 /**
- * Companion Release Candidate Packager (M5 / RC)
+ * Companion Official Release Packager (v2.0.0)
  * Builds:
  *   1. companion/dist/Bangumi-Analyzer-Companion-Portable-win-x64/   (Portable folder + Bangumi-Analyzer-Companion.exe GUI launcher)
  *   2. companion/dist/Bangumi-Analyzer-Companion-Setup-2.0.0-win-x64.exe (Standalone Windows GUI Installer)
- *   3. companion/dist/RELEASE_MANIFEST.json (Release SHA-256 verification summary)
+ *   3. companion/dist/Bangumi-Analyzer-Companion-Portable-2.0.0-win-x64.zip (Portable ZIP)
+ *   4. companion/dist/Bangumi-Analyzer-2.0.0-windows-x64-r5.zip (Standalone Offline Analyzer Core)
+ *   5. companion/dist/RELEASE_MANIFEST.json & SHA256SUMS.txt (Release SHA-256 verification summary)
  *
  * Strictly protects formal data/, packages/, dist/ (root), public-demo/, and site/.
  * Usage: .\.runtime\node-v24.22.1-win-x64\node.exe companion/dist-scripts/package-companion.mjs
@@ -25,14 +27,16 @@ const INSTALLER_SRC_DIR = path.join(COMPANION_ROOT, 'installer');
 const OUT_ROOT = path.join(COMPANION_ROOT, 'dist');
 const PORTABLE_DIR = path.join(OUT_ROOT, 'Bangumi-Analyzer-Companion-Portable-win-x64');
 const LEGACY_STAGE_DIR = path.join(OUT_ROOT, 'Bangumi-Analyzer-Companion-win-x64');
-const RELEASE_VERSION = '2.0.0-rc5';
+const RELEASE_VERSION = '2.0.0';
 const SETUP_EXE = path.join(OUT_ROOT, `Bangumi-Analyzer-Companion-Setup-${RELEASE_VERSION}-win-x64.exe`);
 const PORTABLE_ZIP = path.join(OUT_ROOT, `Bangumi-Analyzer-Companion-Portable-${RELEASE_VERSION}-win-x64.zip`);
-const ANALYZER_REVISION = 4;
+const ANALYZER_REVISION = 5;
+const STANDALONE_ANALYZER_NAME = `Bangumi-Analyzer-2.0.0-windows-x64-r${ANALYZER_REVISION}.zip`;
+const STANDALONE_ANALYZER_ZIP = path.join(OUT_ROOT, STANDALONE_ANALYZER_NAME);
 const R2_ZIP =
   process.env.ANALYZER_BUNDLE_ZIP ||
-  path.join(REPO_ROOT, 'dist/distribution-2nUlPu/Bangumi-Analyzer-2.0.0-windows-x64-r4.zip');
-const EXPECTED_R2_SHA256 = process.env.ANALYZER_BUNDLE_SHA256 ?? 'a773d96356cd659ad845926c1f3d695092e09b659d9a3a57e227fb49ca095445';
+  path.join(REPO_ROOT, 'dist/distribution-fSpGZY/Bangumi-Analyzer-2.0.0-windows-x64-r5.zip');
+const EXPECTED_R2_SHA256 = process.env.ANALYZER_BUNDLE_SHA256 ?? 'b227f6632c9060642444e550e2bc3f2256450bad2e3c4b0420d00e31ed77bcfa';
 
 const CSC_EXE = 'C:\\Windows\\Microsoft.NET\\Framework64\\v4.0.30319\\csc.exe';
 
@@ -89,20 +93,20 @@ function compileCSharpWinExe({ sourceFile, outputExe, extraArgs = [] }) {
 }
 
 async function main() {
-  console.log(`[RC] Verifying official Analyzer v2.0.0 r${ANALYZER_REVISION} distribution archive…`);
+  console.log(`[Release] Verifying official Analyzer v2.0.0 r${ANALYZER_REVISION} distribution archive…`);
   const r2Hash = await sha256(R2_ZIP);
   if (EXPECTED_R2_SHA256 && r2Hash !== EXPECTED_R2_SHA256) {
     throw new Error(`Analyzer r${ANALYZER_REVISION} zip hash mismatch: expected ${EXPECTED_R2_SHA256}, got ${r2Hash}`);
   }
 
-  console.log('[RC] Building companion/ui with VITE_RELEASE_BUILD=1 (strict release hygiene)…');
+  console.log('[Release] Building companion/ui with VITE_RELEASE_BUILD=1 (strict release hygiene)…');
   execFileSync('cmd.exe', ['/d', '/s', '/c', 'npm.cmd run build'], {
     cwd: UI_DIR,
     env: { ...process.env, VITE_RELEASE_BUILD: '1' },
     stdio: 'inherit',
   });
 
-  console.log('[RC] Preparing clean portable staging directory:', PORTABLE_DIR);
+  console.log('[Release] Preparing clean portable staging directory:', PORTABLE_DIR);
   // Protect any existing portable companion-data across rebuilds
   const existingPortableData = path.join(PORTABLE_DIR, 'companion-data');
   const tempDataBackup = path.join(OUT_ROOT, '.tmp-preserve-companion-data');
@@ -159,7 +163,7 @@ async function main() {
     dereference: true,
   });
 
-  // Copy verified Analyzer r3 payload
+  // Copy verified Analyzer r5 payload
   await cp(R2_ZIP, path.join(PORTABLE_DIR, 'bundle', `Bangumi-Analyzer-2.0.0-windows-x64-r${ANALYZER_REVISION}.zip`));
 
   // Copy real Pink Sakura Live2D model assets (CC BY 4.0) with 2048x2048 texture & user-supplied official Core files
@@ -180,7 +184,7 @@ async function main() {
   // Compile native GUI launcher & uninstaller executables with brand Win32 icon
   const iconIco = path.join(INSTALLER_SRC_DIR, 'companion-icon.ico');
   const iconArgs = existsSync(iconIco) ? [`/win32icon:${iconIco}`] : [];
-  console.log('[RC] Compiling Bangumi-Analyzer-Companion.exe & Uninstall-Companion.exe…');
+  console.log('[Release] Compiling Bangumi-Analyzer-Companion.exe & Uninstall-Companion.exe…');
   compileCSharpWinExe({
     sourceFile: path.join(INSTALLER_SRC_DIR, 'CompanionLauncher.cs'),
     outputExe: path.join(PORTABLE_DIR, 'Bangumi-Analyzer-Companion.exe'),
@@ -219,7 +223,7 @@ async function main() {
 
   const docs = await readFile(path.join(COMPANION_ROOT, 'USER_GUIDE.md'), 'utf8').catch(() => null);
   const readmeText = [
-    `Bangumi Analyzer Companion ${RELEASE_VERSION} (Windows x64) - Release Candidate`,
+    `Bangumi Analyzer Companion ${RELEASE_VERSION} (Windows x64)`,
     '======================================================================',
     '',
     'Portable Launch: Double-click Bangumi-Analyzer-Companion.exe (or Start-Companion.bat / .vbs).',
@@ -244,7 +248,7 @@ async function main() {
   }
 
   // Compute checksum manifest for Portable files before packing Setup.exe
-  console.log('[RC] Generating portable release-checksums.json…');
+  console.log('[Release] Generating portable release-checksums.json…');
   const files = await collectFiles(PORTABLE_DIR);
   const entries = {};
   for (const rel of files) {
@@ -253,7 +257,7 @@ async function main() {
     const st = await stat(full);
     entries[rel] = { size: st.size, sha256: await sha256(full) };
   }
-  const buildId = `rc5-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}`;
+  const buildId = `v2.0.0-${new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12)}`;
   await writeFile(
     path.join(PORTABLE_DIR, 'release-checksums.json'),
     JSON.stringify(
@@ -277,7 +281,7 @@ async function main() {
   // Compress portable payload into temporary archive and compile self-extracting GUI Setup.exe
   const payloadZip = path.join(OUT_ROOT, '.tmp-companion-payload.zip');
   await rm(payloadZip, { force: true });
-  console.log('[RC] Compressing payload, building standalone GUI Setup EXE and runnable Portable ZIP…');
+  console.log('[Release] Compressing payload, building standalone GUI Setup EXE and runnable Portable ZIP…');
   const quote = (s) => "'" + s.replaceAll("'", "''") + "'";
   const psExe = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
   const zr = spawnSync(
@@ -319,6 +323,9 @@ async function main() {
     await rm(payloadZip, { force: true });
   }
 
+  await rm(path.join(OUT_ROOT, 'Bangumi-Analyzer-2.0.0-windows-x64-r4.zip'), { force: true });
+  await cp(R2_ZIP, STANDALONE_ANALYZER_ZIP);
+
   if (preservedPortableData) {
     await cp(tempDataBackup, existingPortableData, { recursive: true });
     await rm(tempDataBackup, { recursive: true, force: true });
@@ -328,12 +335,15 @@ async function main() {
   const setupHash = await sha256(SETUP_EXE);
   const portableZipStat = await stat(PORTABLE_ZIP);
   const portableZipHash = await sha256(PORTABLE_ZIP);
+  const standaloneStat = await stat(STANDALONE_ANALYZER_ZIP);
+  const standaloneHash = await sha256(STANDALONE_ANALYZER_ZIP);
 
   await writeFile(
     path.join(OUT_ROOT, 'SHA256SUMS.txt'),
     [
       `${setupHash}  ${path.basename(SETUP_EXE)}`,
       `${portableZipHash}  ${path.basename(PORTABLE_ZIP)}`,
+      `${standaloneHash}  ${STANDALONE_ANALYZER_NAME}`,
       '',
     ].join('\n'),
     'utf8',
@@ -367,7 +377,9 @@ async function main() {
         bundledAnalyzer: {
           version: '2.0.0',
           distributionRevision: ANALYZER_REVISION,
-          sha256: EXPECTED_R2_SHA256,
+          fileName: STANDALONE_ANALYZER_NAME,
+          sizeBytes: standaloneStat.size,
+          sha256: standaloneHash,
         },
         knownLimits: [
           'Windows x64 only; installers are currently unsigned (SmartScreen may show an unknown publisher prompt).',
@@ -381,9 +393,10 @@ async function main() {
     'utf8',
   );
 
-  console.log(`[RC] Portable bundle ready (${Object.keys(entries).length + 1} files): ${PORTABLE_DIR}`);
-  console.log(`[RC] Portable ZIP ready (${(portableZipStat.size / (1024 * 1024)).toFixed(1)} MB): ${PORTABLE_ZIP}`);
-  console.log(`[RC] Graphical Installer EXE ready (${(setupStat.size / (1024 * 1024)).toFixed(1)} MB): ${SETUP_EXE}`);
+  console.log(`[Release] Portable bundle ready (${Object.keys(entries).length + 1} files): ${PORTABLE_DIR}`);
+  console.log(`[Release] Portable ZIP ready (${(portableZipStat.size / (1024 * 1024)).toFixed(1)} MB): ${PORTABLE_ZIP}`);
+  console.log(`[Release] Graphical Installer EXE ready (${(setupStat.size / (1024 * 1024)).toFixed(1)} MB): ${SETUP_EXE}`);
+  console.log(`[Release] Standalone Analyzer r${ANALYZER_REVISION} ready (${(standaloneStat.size / (1024 * 1024)).toFixed(1)} MB): ${STANDALONE_ANALYZER_ZIP}`);
 }
 
 main().catch((err) => {

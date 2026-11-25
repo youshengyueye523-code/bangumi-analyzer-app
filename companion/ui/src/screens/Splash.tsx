@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { FastForward, Sparkles, CheckCircle2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { Button, LogoMark, MockTag, cx } from '../components/ui';
 import { Mascot } from '../components/Mascot';
+import { getProductBridge } from '../driver/product';
+import { defaultAutoLaunchController } from '../state/autoLaunch';
 import { useFlow } from '../state/flow';
 import { prefs, usePrefs } from '../state/prefs';
 import { startAndAwaitReady, useAnalyzerStatus, useDriver } from '../driver';
@@ -29,6 +31,7 @@ export function SplashScreen() {
   const [phase, setPhase] = useState<'boot' | 'checking' | 'ready' | 'error'>('boot');
   const started = useRef(false);
   const doneTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const finishedRef = useRef(false);
 
   useEffect(() => {
     if (started.current) return;
@@ -39,37 +42,77 @@ export function SplashScreen() {
       log('info', '日常启动：检查 Analyzer 状态');
       const cur = await driver.getStatus();
       if (ac.signal.aborted) return;
-      if (p.autoStart && cur.state === 'stopped') {
-        log('info', '自动启动已开启：唤醒 Analyzer 服务');
-        const next = await startAndAwaitReady(
-          driver,
-          (s) => {
-            if (s.state === 'checking') setPhase('checking');
-            else if (s.state === 'starting') setPhase('boot');
-          },
-          ac.signal,
-        );
-        if (ac.signal.aborted) return;
-        if (next.state !== 'running') {
+
+      const pb = getProductBridge();
+      const previewOrMock = !pb || defaultAutoLaunchController.getSnapshot().coldAutoStartHandled;
+      if (p.autoStart) {
+        if (previewOrMock && (cur.state === 'stopped' || cur.state === 'unknown')) {
+          log('info', '自动启动已开启：唤醒 Analyzer 服务');
+          if (p.autoOpen) defaultAutoLaunchController.armAutoOpenForNextReady();
+          const next = await startAndAwaitReady(
+            driver,
+            (s) => {
+              if (s.state === 'checking') setPhase('checking');
+              else if (s.state === 'starting') setPhase('boot');
+            },
+            ac.signal,
+          );
+          if (ac.signal.aborted) return;
+          if (next.state !== 'running') {
+            setPhase('error');
+            return;
+          }
+          finishedRef.current = true;
+          setPhase('ready');
+          doneTimer.current = setTimeout(() => {
+            if (!ac.signal.aborted) flow.go('home');
+          }, p.reduceMotion ? 350 : 950);
+        } else if (cur.state === 'error') {
           setPhase('error');
-          return;
+        } else if (cur.state === 'running') {
+          finishedRef.current = true;
+          setPhase('ready');
+          doneTimer.current = setTimeout(() => {
+            if (!ac.signal.aborted) flow.go('home');
+          }, p.reduceMotion ? 350 : 950);
         }
-      } else if (cur.state === 'error') {
+        return;
+      }
+
+      if (cur.state === 'error') {
         setPhase('error');
         return;
       }
+      finishedRef.current = true;
       setPhase('ready');
       doneTimer.current = setTimeout(() => {
         if (!ac.signal.aborted) flow.go('home');
       }, p.reduceMotion ? 350 : 950);
     };
-    run();
+    void run();
     return () => {
       ac.abort();
       if (doneTimer.current) clearTimeout(doneTimer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!p.autoStart || finishedRef.current) return;
+    if (status.state === 'checking') {
+      setPhase('checking');
+    } else if (status.state === 'starting') {
+      setPhase('boot');
+    } else if (status.state === 'error') {
+      setPhase('error');
+    } else if (status.state === 'running') {
+      finishedRef.current = true;
+      setPhase('ready');
+      doneTimer.current = setTimeout(() => {
+        flow.go('home');
+      }, p.reduceMotion ? 350 : 950);
+    }
+  }, [status.state, p.autoStart, p.reduceMotion, flow]);
 
   const skip = () => {
     if (doneTimer.current) clearTimeout(doneTimer.current);

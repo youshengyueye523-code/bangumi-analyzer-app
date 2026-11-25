@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { allowedRequest, allowedSender, errorInfo, failureView, idle, safeUrl, toUi, UI_URL, validateStatus } from '../contract.mjs';
+import { ALLOWED_ROUTES, allowedRequest, allowedSender, errorInfo, failureView, idle, safeOpenUrl, safeUrl, toUi, UI_URL, validateStatus } from '../contract.mjs';
 import { assetPath, serveAsset, CSP } from '../assets.mjs';
 import { RuntimeClient } from '../runtime-client.mjs';
 import { BridgeEngine } from '../engine.mjs';
@@ -20,15 +20,28 @@ test('M1-A security boundaries and JSONL client (synthetic transport only)', asy
   });
   await t.test('allowlist rejects unknown methods, URL/path/PID arguments and arrays', () => {
     for (const method of ['getStatus','startAnalyzer','stopAnalyzer','openAnalyzer','getLogs']) assert.equal(allowedRequest({ method }), true);
+    for (const route of ALLOWED_ROUTES) assert.equal(allowedRequest({ method: 'openAnalyzer', route }), true);
+    for (const badRoute of ['/unknown', '/library?next=http://evil', '//evil.com', 'https://untrusted.invalid/', 123]) {
+      assert.equal(allowedRequest({ method: 'openAnalyzer', route: badRoute }), false);
+    }
+    assert.equal(allowedRequest({ method: 'getStatus', route: '/library' }), false);
+    assert.equal(allowedRequest({ method: 'openAnalyzer', route: '/library', extra: true }), false);
     for (const value of [null, [], 'getStatus', { method: 'exec' }, { method: 'openAnalyzer', url: 'PRIVATE_CANARY' }, { method: 'stopAnalyzer', pid: 123 }]) assert.equal(allowedRequest(value), false);
     assert.throws(() => new BridgeEngine({ packageRoot:'unused',port:8787 }), { code:'INVALID_PORT' });
   });
-  await t.test('status mapping preserves ownership, refuses foreign URLs and never exposes paths/unknown metadata', () => {
-    const raw = { ...idle(), state:'ready', ownsProcess:true, url:'http://127.0.0.1:19091/', package:{state:'valid',version:'2.0.0'},
+  await t.test('status mapping preserves ownership, package revision metadata, refuses foreign URLs and never exposes paths/unknown metadata', () => {
+    const raw = { ...idle(), state:'ready', ownsProcess:true, url:'http://127.0.0.1:19091/', package:{state:'valid',version:'2.0.0',distributionRevision:5,files:3256},
       dataDir:'PRIVATE_CANARY',pid:999,logs:[] };
     const ui = toUi(validateStatus(raw), 1);
     assert.equal(ui.state, 'running'); assert.equal(ui.runtime.ownsProcess, true); assert.equal(ui.port,19091);
+    assert.equal(ui.package.distributionRevision, 5); assert.equal(ui.package.files, 3256);
     assert.equal(ui.pid,null); assert.equal(ui.dataDir,null); assert.ok(!JSON.stringify(ui).includes('PRIVATE_CANARY'));
+    for (const route of ALLOWED_ROUTES) {
+      assert.equal(safeOpenUrl(`http://127.0.0.1:19091${route}`), `http://127.0.0.1:19091${route}`);
+    }
+    for (const badOpen of ['http://127.0.0.1:8787/library', 'http://127.0.0.1:19091/unknown', 'http://localhost:19091/series', 'https://untrusted.invalid/series']) {
+      assert.equal(safeOpenUrl(badOpen), null);
+    }
     for(const url of ['http://127.0.0.1:8787/','http://localhost:19091/','https://untrusted.invalid/','http://127.0.0.1:19091/?token=secret']) {
       assert.equal(safeUrl(url),null); assert.throws(()=>validateStatus({...raw,url}),{code:'HOST_PROTOCOL'});
     }

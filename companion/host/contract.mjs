@@ -1,6 +1,7 @@
 export const UI_URL = 'companion://ui/index.html?driver=codex&screen=home';
 export const CHANNEL = 'companion:v1:invoke';
 export const METHODS = new Set(['getStatus', 'startAnalyzer', 'stopAnalyzer', 'openAnalyzer', 'getLogs']);
+export const ALLOWED_ROUTES = new Set(['/', '/library', '/analysis', '/series', '/profile', '/diagnostics']);
 export const RUNTIME_CODES = new Set(['UNSAFE_PATH','PACKAGE_MISSING','PACKAGE_INVALID','PACKAGE_DAMAGED','PACKAGE_UNSUPPORTED','PACKAGE_ACCESS',
   'SESSION_LOCKED','LOCK_CHANGED','PLATFORM_UNSUPPORTED','INVALID_PORT','PORT_IN_USE','PORT_UNAVAILABLE','SPAWN_FAILED','SERVICE_EXITED',
   'START_TIMEOUT','HEALTH_FAILED','NOT_READY','STOP_TIMEOUT','STOP_FAILED','OPEN_FAILED','BUSY','INTERNAL']);
@@ -29,6 +30,32 @@ export function safeUrl(value) {
   const p = Number(new URL(value).port);
   return p >= 1024 && p <= 65535 && p !== 8787 ? value : null;
 }
+export function safeOpenUrl(value) {
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = new URL(value);
+    const p = Number(parsed.port);
+    if (
+      parsed.protocol !== 'http:' ||
+      parsed.hostname !== '127.0.0.1' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash ||
+      !Number.isInteger(p) ||
+      p < 1024 ||
+      p > 65535 ||
+      p === 8787 ||
+      !ALLOWED_ROUTES.has(parsed.pathname) ||
+      value !== `http://127.0.0.1:${p}${parsed.pathname}`
+    ) {
+      return null;
+    }
+    return value;
+  } catch {
+    return null;
+  }
+}
 export function validateStatus(raw) {
   if (!raw || raw.protocolVersion !== 1 || !states.has(raw.state) || typeof raw.ownsProcess !== 'boolean' || !packages.has(raw.package?.state) ||
       !Array.isArray(raw.logs) || raw.logs.length > 100 || (raw.error && !RUNTIME_CODES.has(raw.error.code))) throw new HostError('HOST_PROTOCOL');
@@ -38,15 +65,27 @@ export function validateStatus(raw) {
       typeof e.at !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(e.at)) throw new HostError('HOST_PROTOCOL');
     return { seq: e.seq, at: e.at, level: e.level, event: e.event };
   });
+  const rev = raw.package.distributionRevision;
+  const files = raw.package.files;
   return { protocolVersion: 1, state: raw.state, ownsProcess: raw.ownsProcess, url: raw.state === 'ready' ? raw.url : null,
-    package: { state: raw.package.state, version: raw.package.version === '2.0.0' ? '2.0.0' : null },
+    package: {
+      state: raw.package.state,
+      version: raw.package.version === '2.0.0' ? '2.0.0' : null,
+      ...(Number.isInteger(rev) && rev >= 2 && rev <= 99 ? { distributionRevision: rev } : {}),
+      ...(Number.isInteger(files) && files >= 1 && files <= 20000 ? { files } : {}),
+    },
     error: raw.error ? { code: raw.error.code } : null, logs };
 }
 export function toUi(raw, revision, actionError = null) {
   const url = raw.state === 'ready' ? safeUrl(raw.url) : null;
   return { state: actionError ? 'error' : ({ idle:'unknown',checking:'starting',starting:'starting',ready:'running',stopping:'stopping',stopped:'stopped',failed:'error' })[raw.state],
     protocolVersion: 1, rawState: actionError ? 'failed' : raw.state,
-    package: { state: raw.package.state, ...(raw.package.version ? { version: raw.package.version } : {}) },
+    package: {
+      state: raw.package.state,
+      ...(raw.package.version ? { version: raw.package.version } : {}),
+      ...(typeof raw.package.distributionRevision === 'number' ? { distributionRevision: raw.package.distributionRevision } : {}),
+      ...(typeof raw.package.files === 'number' ? { files: raw.package.files } : {}),
+    },
     ownsProcess: raw.ownsProcess, logs: structuredClone(raw.logs),
     url: actionError ? null : url, port: !actionError && url ? Number(new URL(url).port) : null,
     pid: null, version: raw.package.version ?? null, startedAt: null, dataDir: null,
@@ -58,6 +97,12 @@ export function allowedSender(event, contents) {
   catch { return false; }
 }
 export function allowedRequest(payload) {
-  return payload !== null && typeof payload === 'object' && !Array.isArray(payload) && Object.keys(payload).length === 1 && METHODS.has(payload.method);
+  if (payload === null || typeof payload !== 'object' || Array.isArray(payload) || !METHODS.has(payload.method)) return false;
+  const keys = Object.keys(payload);
+  if (payload.method === 'openAnalyzer') {
+    if (keys.length === 1) return true;
+    return keys.length === 2 && keys.includes('route') && typeof payload.route === 'string' && ALLOWED_ROUTES.has(payload.route);
+  }
+  return keys.length === 1;
 }
 export const failureView = (status, code) => ({ ...status, state: 'error', rawState: 'failed', runtime: { ...status.runtime, state: 'failed' }, url: null, port: null, error: errorInfo(code) });

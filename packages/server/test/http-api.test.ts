@@ -563,4 +563,41 @@ describe('本地 HTTP API', () => {
     expect(response.statusCode).toBe(404);
     expect(response.json().error.code).toBe('not_found');
   });
+
+  it('网页端主题配置可经由服务端持久化并通过 /api/theme.js 首屏下发', async () => {
+    const initial = await app.inject({ method: 'GET', url: '/api/config' });
+    expect(initial.statusCode).toBe(200);
+    expect(initial.json().theme).toBe('system');
+
+    const initialScript = await app.inject({ method: 'GET', url: '/api/theme.js' });
+    expect(initialScript.statusCode).toBe(200);
+    expect(initialScript.headers['content-type']).toContain('application/javascript');
+    expect(initialScript.headers['cache-control']).toBe('no-store');
+    expect(initialScript.body).toBe('window.__BANGUMI_INITIAL_THEME__="system";');
+
+    for (const nextTheme of ['dark', 'light', 'system'] as const) {
+      const updated = await app.inject({
+        method: 'PUT',
+        url: '/api/config',
+        payload: { theme: nextTheme },
+      });
+      expect(updated.statusCode).toBe(200);
+      expect(updated.json().theme).toBe(nextTheme);
+
+      const loaded = await app.inject({ method: 'GET', url: '/api/config' });
+      expect(loaded.statusCode).toBe(200);
+      expect(loaded.json().theme).toBe(nextTheme);
+
+      const themeScript = await app.inject({ method: 'GET', url: '/api/theme.js' });
+      expect(themeScript.statusCode).toBe(200);
+      expect(themeScript.body).toBe(`window.__BANGUMI_INITIAL_THEME__=${JSON.stringify(nextTheme)};`);
+    }
+
+    const invalid = await app.inject({
+      method: 'PUT',
+      url: '/api/config',
+      payload: { theme: 'sepia' },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
 });

@@ -15,6 +15,7 @@ import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import { cn } from '../../lib/cn.js';
 import { useDetailScrollPolicy } from '../../lib/detailScrollPolicy.js';
 import { useConfig, useHealth } from '../../lib/queries.js';
+import { syncThemeFromServerConfig } from '../../lib/theme.js';
 import { Avatar } from '../ui/avatar.js';
 import { GlobalSearch } from './GlobalSearch.js';
 import { SyncButton } from './SyncButton.js';
@@ -120,8 +121,25 @@ function SidebarFooter() {
 export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const location = useLocation();
+  const { data: config, refetch: refetchConfig } = useConfig();
   // v1.8.2：任何「新进入 Detail」的导航都必须从顶部开始（成员锚点除外）
   useDetailScrollPolicy();
+
+  useEffect(() => {
+    syncThemeFromServerConfig(config?.theme);
+  }, [config?.theme]);
+
+  useEffect(() => {
+    const syncRemoteConfig = () => {
+      if (!document.hidden) void refetchConfig();
+    };
+    window.addEventListener('focus', syncRemoteConfig);
+    document.addEventListener('visibilitychange', syncRemoteConfig);
+    return () => {
+      window.removeEventListener('focus', syncRemoteConfig);
+      document.removeEventListener('visibilitychange', syncRemoteConfig);
+    };
+  }, [refetchConfig]);
 
   useEffect(() => {
     setMobileOpen(false);

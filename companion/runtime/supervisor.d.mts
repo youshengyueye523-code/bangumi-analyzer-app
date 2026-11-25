@@ -1,4 +1,5 @@
 export type RuntimeState = 'idle' | 'checking' | 'starting' | 'ready' | 'stopping' | 'stopped' | 'failed';
+export type AllowedAnalyzerRoute = '/' | '/library' | '/analysis' | '/series' | '/profile' | '/diagnostics';
 export interface RuntimeErrorInfo { code: string; message: string }
 export interface RuntimeStatus {
   protocolVersion: 1;
@@ -9,7 +10,7 @@ export interface RuntimeStatus {
   error: RuntimeErrorInfo | null;
   logs: Array<{ seq: number; at: string; level: 'info' | 'error'; event: string }>;
 }
-export interface RuntimeResult { ok: boolean; status: RuntimeStatus; error?: RuntimeErrorInfo }
+export interface RuntimeResult { ok: boolean; status: RuntimeStatus; error?: RuntimeErrorInfo; openedUrl?: string }
 export class AnalyzerSupervisor {
   constructor(options: {
     packageRoot: string; port?: number; startupTimeoutMs?: number; stopTimeoutMs?: number;
@@ -19,6 +20,6 @@ export class AnalyzerSupervisor {
   getStatus(): RuntimeStatus;
   startAnalyzer(): Promise<RuntimeResult>;
   stopAnalyzer(): Promise<RuntimeResult>;
-  openAnalyzer(): Promise<RuntimeResult>;
+  openAnalyzer(route?: AllowedAnalyzerRoute): Promise<RuntimeResult>;
 }
 export function openDefaultBrowser(url: string): Promise<void>;

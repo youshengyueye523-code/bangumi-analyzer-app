@@ -590,20 +590,20 @@ function SyncHistoryCard() {
   );
 }
 
-/** 外观：主题在这里切换，与顶栏的开关共用同一套本地偏好。 */
+/** 外观：主题在这里切换，与顶栏开关及 Companion 偏好同步保存在本机配置。 */
 function AppearanceCard() {
   return (
     <Card>
       <CardHeader
         title="主题"
-        description="深色为默认；跟随系统时会随操作系统的浅色 / 深色设置自动切换。"
+        description="默认跟随系统，可切换深色或浅色；重启或随机端口变化后自动保持。"
       />
       <CardBody className="space-y-3 pt-2">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-border bg-surface-2 px-3 py-2.5">
           <div className="min-w-0">
             <p className="text-note font-medium">当前主题</p>
             <p className="mt-0.5 text-caption text-subtle">
-              选择结果保存在本机浏览器，不随数据库迁移。
+              选择结果保存在本机配置（data/config.json），与 Companion 启动与偏好保持同步。
             </p>
           </div>
           <ThemeToggle withLabel />

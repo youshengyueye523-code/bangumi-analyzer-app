@@ -3,7 +3,7 @@
 本流程生成完整 Local Windows x64 便携 ZIP，不是 Public Demo，不是第四阶段安装桥梁。
 使用当前工作树文件（包括未提交成果），不能改用 Git HEAD / git archive，也不能直接压缩工作目录。
 
-当前分发修订为 r2（账号断开功能），产品版本仍为 2.0.0；ZIP 名包含 -r2，release.json 记录 distributionRevision=2。
+当前分发修订为 r5（v2.0.0 正式版：跨端口网页主题持久化 + 账号断开 + Series Engine v3），产品版本为 2.0.0；ZIP 名包含 -r5，release.json 记录 distributionRevision=5。
 便携启动器给服务设置 BANGUMI_DISTRIBUTION=1，通过只读 canDisconnectBangumi 能力显示设置入口并注册退出路由。
 普通 Local 不设置该标识，不显示新入口、不注册该路由；没有维护第二套源码、增加个人配置字段或升级 Schema。
 

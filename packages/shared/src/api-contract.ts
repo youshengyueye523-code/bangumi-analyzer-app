@@ -110,6 +110,9 @@ export interface SyncStatus {
 
 /* ------------------------------------------------------------- 配置/凭据 */
 
+export type ThemePreference = 'dark' | 'light' | 'system';
+export const THEME_PREFERENCES = ['dark', 'light', 'system'] as const;
+
 export interface AppConfigPublic {
   /** Runtime capability, not a writable user preference. Absent in ordinary Local. */
   canDisconnectBangumi?: boolean;
@@ -145,6 +148,8 @@ export interface AppConfigPublic {
   wallpaper: WallpaperSetting;
   /** 界面材质倾向（通透度 / 磨砂度） */
   material: MaterialSetting;
+  /** 网页端主题偏好（本机持久化，跨随机端口保持一致） */
+  theme?: ThemePreference;
   /**
    * 隐藏 NSFW 内容（全局可见性策略）。
    *
@@ -173,6 +178,7 @@ export interface AppConfigUpdate {
   ai?: AiConfigUpdate;
   wallpaper?: WallpaperSettingUpdate;
   material?: MaterialSettingUpdate;
+  theme?: ThemePreference;
   hideNsfw?: boolean;
 }
 
@@ -401,6 +407,7 @@ export const appConfigUpdateSchema = z.object({
       frosted: z.number().min(0).max(100).optional(),
     })
     .optional(),
+  theme: z.enum(['dark', 'light', 'system']).optional(),
   hideNsfw: z.boolean().optional(),
   ai: z
     .object({

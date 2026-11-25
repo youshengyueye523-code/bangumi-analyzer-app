@@ -3,7 +3,7 @@ import { Backdrop } from './components/Backdrop';
 import { DevPanel, TitleBar, Toasts } from './components/Chrome';
 import { cx } from './components/ui';
 import type { MascotState } from './components/Mascot';
-import { DriverContext, selectDriver } from './driver';
+import { DriverContext, selectDriver, useAnalyzerStatus } from './driver';
 import { getProductBridge } from './driver/product';
 import { useWindowController } from './driver/window';
 import { AccountScreen } from './screens/Account';
@@ -17,6 +17,7 @@ import { LaunchScreen } from './screens/Launch';
 import { ReadyScreen } from './screens/Ready';
 import { SetupShell } from './screens/SetupShell';
 import { SplashScreen } from './screens/Splash';
+import { useAutoLaunchCoordinator } from './state/autoLaunch';
 import { FlowContext, SCREEN_ORDER, type FlowApi, type Screen, type SetupDraft } from './state/flow';
 import { prefs, usePrefs } from './state/prefs';
 
@@ -33,6 +34,7 @@ function initialScreen(firstRunCompleted: boolean, skipIntro: boolean): Screen {
 export function App() {
   const p = usePrefs();
   const driver = useMemo(() => selectDriver(), []);
+  const analyzerStatus = useAnalyzerStatus(driver);
   const productBridge = useMemo(() => getProductBridge(), []);
   const winCtrl = useWindowController();
   const [productReady, setProductReady] = useState(!productBridge);
@@ -65,6 +67,7 @@ export function App() {
           skipIntro: s.skipIntro,
           autoStart: s.autoStart,
           autoOpen: s.autoOpen,
+          analyzerTheme: s.analyzerTheme ?? 'system',
           live2dFpsMode: s.live2dFpsMode ?? 'auto',
           installDir: defaultDir,
           nickname: s.nickname || '',
@@ -94,6 +97,48 @@ export function App() {
     root.classList.toggle('light', p.theme === 'light');
     root.classList.toggle('reduce-motion', p.reduceMotion);
   }, [p.theme, p.reduceMotion]);
+
+  useEffect(() => {
+    if (!productBridge || !productReady) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        winCtrl.rendererReady();
+      });
+    });
+    return () => {
+      if (raf1) cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productBridge, productReady]);
+
+  useEffect(() => {
+    if (!productBridge) return;
+    const syncOnFocus = () => {
+      void productBridge.getCompanionState().then((res) => {
+        if (!res?.ok || !res.state) return;
+        const nextTheme = res.state.analyzerTheme ?? 'system';
+        if (prefs.get().analyzerTheme !== nextTheme) {
+          prefs.set({ analyzerTheme: nextTheme });
+        }
+      }).catch(() => {});
+    };
+    window.addEventListener('focus', syncOnFocus);
+    return () => window.removeEventListener('focus', syncOnFocus);
+  }, [productBridge]);
+
+  useAutoLaunchCoordinator({
+    enabled: productReady,
+    allowColdAutoStart: Boolean(productBridge) && productReady,
+    screen,
+    autoStart: p.autoStart,
+    autoOpen: p.autoOpen,
+    firstRunCompleted: p.firstRunCompleted,
+    driver,
+    status: analyzerStatus,
+  });
 
   const [initBusy, setInitBusy] = useState(false);
 

@@ -9,6 +9,8 @@
  * startAnalyzer 返回 checking/starting 时由 UI 轮询 getStatus 直到 ready/failed。
  */
 
+export type AnalyzerRoute = '/' | '/library' | '/analysis' | '/series' | '/profile' | '/diagnostics';
+
 export type AnalyzerRunState =
   | 'unknown'
   | 'stopped'
@@ -117,7 +119,7 @@ export interface CompanionDriver {
   getStatus(): Promise<AnalyzerStatus>;
   startAnalyzer(): Promise<AnalyzerStatus>;
   stopAnalyzer(): Promise<AnalyzerStatus>;
-  openAnalyzer(): Promise<OpenResult>;
+  openAnalyzer(route?: AnalyzerRoute): Promise<OpenResult>;
   subscribe?(listener: (status: AnalyzerStatus) => void): () => void;
 }
 
@@ -137,7 +139,7 @@ const ERROR_HINTS: Record<string, string> = {
   PACKAGE_MISSING: '找不到分发包目录。请重新选择或解压独立的 Analyzer r2 文件夹。',
   PACKAGE_DAMAGED: '分发包文件校验未通过（SHA-256 不匹配）。请重新解压干净的分发包到新目录，勿覆盖现有 data。',
   PACKAGE_INVALID: '分发包结构不完整或版本不匹配。请核对是否选择了同时包含 runtime、packages 与 checksums.json 的目录。',
-  PACKAGE_UNSUPPORTED: '当前运行时仅支持 Analyzer 2.0.0 (r2) 分发包。',
+  PACKAGE_UNSUPPORTED: '当前运行时仅支持 Analyzer 2.0.0 (r2–r5) 分发包。',
   PLATFORM_UNSUPPORTED: '当前仅支持 Windows x64 与随包 Node 24 运行时。',
   UNSAFE_PATH: '禁止使用符号链接、网盘同步目录或正式开发路径，请改用可写的独立普通本地目录。',
   PACKAGE_ACCESS: '无法读取分发包目录，请检查文件夹权限或是否被安全软件拦截。',

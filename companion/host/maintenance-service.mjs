@@ -177,13 +177,17 @@ export async function runFullIntegrityCheck(installDir, engine) {
   let packageOk = false;
   let packageMessage = '';
   try {
-    await checkPackage(installDir);
+    const pkg = await checkPackage(installDir);
     packageOk = true;
-    packageMessage = '分发包 3,249 个文件清单与 SHA-256 校验通过';
+    packageMessage = `分发包 r${pkg.distributionRevision}（${pkg.files.toLocaleString('en-US')} 个文件）清单与 SHA-256 校验通过`;
   } catch (err) {
     if (err?.code === 'SESSION_LOCKED' && status?.state === 'running' && status?.runtime?.ownsProcess) {
       packageOk = true;
-      packageMessage = '3,249 个核心文件 SHA-256 校验通过（受管会话运行中）';
+      const rev = status?.package?.distributionRevision;
+      const files = status?.package?.files;
+      packageMessage = rev && files
+        ? `r${rev}（${files.toLocaleString('en-US')} 个核心文件）SHA-256 校验通过（受管会话运行中）`
+        : '核心文件 SHA-256 校验通过（受管会话运行中）';
     } else {
       packageMessage = `分发包校验失败 (${err.code ?? err.message})`;
     }
@@ -476,7 +480,7 @@ export async function exportDiagnosticReport(win, { companionHome, installDir, e
   const integrity = installDir ? await runFullIntegrityCheck(installDir, engine) : null;
   const payload = {
     exportedAt: new Date().toISOString(),
-    companionVersion: 'M2/M3',
+    companionVersion: '2.0.0',
     platform: `${process.platform}/${process.arch}`,
     // 不导出敏感路径与任何凭据（Token / API Key 已屏蔽）
     installed: Boolean(installDir),

@@ -17,6 +17,7 @@ import {
 import { Button, MockTag, ProgressRing, cx } from '../components/ui';
 import { Mascot } from '../components/Mascot';
 import { startAndAwaitReady, useAnalyzerStatus, useDriver, type AnalyzerError } from '../driver';
+import { disarmAutoOpen, markColdAutoStartHandled } from '../state/autoLaunch';
 import { useFlow } from '../state/flow';
 import { usePrefs } from '../state/prefs';
 import { log, toast } from '../state/feedback';
@@ -34,6 +35,8 @@ export function LaunchScreen() {
   const acRef = useRef<AbortController | null>(null);
 
   const launchSequence = useCallback(async () => {
+    markColdAutoStartHandled();
+    disarmAutoOpen();
     acRef.current?.abort();
     const ac = new AbortController();
     acRef.current = ac;

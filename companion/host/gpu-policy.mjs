@@ -106,12 +106,15 @@ export function resolveGpuStartupPolicy({ companionHome, argv = [], stateGpuMode
     };
   }
 
+  const d3d11Switches = process.platform === 'win32' ? [['use-gl', 'angle'], ['use-angle', 'd3d11']] : [];
+  const glSwitches = process.platform === 'win32' ? [['use-gl', 'angle'], ['use-angle', 'gl']] : [];
+
   if (effectiveMode === 'gl') {
     return {
       ...base,
       activeBackend: 'gl',
       webglAllowed: true,
-      switches: process.platform === 'win32' ? [['use-gl', 'angle'], ['use-angle', 'gl']] : [],
+      switches: glSwitches,
       reason: 'USER_SELECTED_GL',
     };
   }
@@ -121,13 +124,13 @@ export function resolveGpuStartupPolicy({ companionHome, argv = [], stateGpuMode
       ...base,
       activeBackend: 'default',
       webglAllowed: true,
-      switches: [],
+      switches: d3d11Switches,
       reason: 'USER_SELECTED_D3D11',
     };
   }
 
-  // 'auto' policy: avoid --enable-unsafe-swiftshader; isolate dual-GPU D3D11 probe crashes cleanly,
-  // while leaving single-GPU / VM environments on Electron default backend unless a GPU crash occurred.
+  // 'auto' policy: avoid --enable-unsafe-swiftshader; prefer Windows DirectComposition-compatible
+  // ANGLE D3D11 on both single- and hybrid-GPU systems, falling back to ANGLE GL only if D3D11 crashes.
   if (failedBackends.includes('default') && failedBackends.includes('gl')) {
     return {
       ...base,
@@ -142,7 +145,7 @@ export function resolveGpuStartupPolicy({ companionHome, argv = [], stateGpuMode
       ...base,
       activeBackend: 'gl',
       webglAllowed: true,
-      switches: process.platform === 'win32' ? [['use-gl', 'angle'], ['use-angle', 'gl']] : [],
+      switches: glSwitches,
       reason: 'RECOVERY_FROM_DEFAULT_CRASH',
     };
   }
@@ -151,24 +154,24 @@ export function resolveGpuStartupPolicy({ companionHome, argv = [], stateGpuMode
       ...base,
       activeBackend: 'default',
       webglAllowed: true,
-      switches: [],
+      switches: d3d11Switches,
       reason: 'RECOVERY_FROM_GL_CRASH',
     };
   }
   if (hybridMultiGpu) {
     return {
       ...base,
-      activeBackend: 'gl',
+      activeBackend: 'default',
       webglAllowed: true,
-      switches: [['use-gl', 'angle'], ['use-angle', 'gl']],
-      reason: 'HYBRID_MULTI_GPU_GL',
+      switches: d3d11Switches,
+      reason: 'HYBRID_MULTI_GPU_D3D11',
     };
   }
   return {
     ...base,
     activeBackend: 'default',
     webglAllowed: true,
-    switches: [],
+    switches: d3d11Switches,
     reason: 'SINGLE_GPU_DEFAULT',
   };
 }
@@ -200,13 +203,17 @@ export function markGpuHealthy(companionHome, policy) {
   const file = gpuStatePath(companionHome);
   if (!file || !policy?.webglAllowed) return;
   const cur = readJsonSync(file);
-  if (!cur.crashCount && (!Array.isArray(cur.failedBackends) || cur.failedBackends.length === 0)) return;
+  const curFailed = Array.isArray(cur.failedBackends) ? cur.failedBackends : [];
+  const currentBackend = policy.activeBackend === 'gl' ? 'gl' : 'default';
+  // Only clear the currently healthy backend; retain failures for other backends to prevent boot ping-pong.
+  const nextFailed = curFailed.filter((b) => b !== currentBackend);
+  if (!cur.crashCount && nextFailed.length === curFailed.length) return;
   try {
     mkdirSync(companionHome, { recursive: true });
     writeJsonSync(file, {
       ...cur,
       crashCount: 0,
-      failedBackends: [],
+      failedBackends: nextFailed,
       lastHealthyBackend: policy.activeBackend,
       lastHealthyAt: new Date().toISOString(),
     });

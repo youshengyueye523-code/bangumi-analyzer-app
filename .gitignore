@@ -10,7 +10,7 @@ companion/ui/dist/
 .runtime/
 
 # Local user data & credentials (NEVER commit)
-data/
+/data/
 *.db
 *.db-wal
 *.db-shm
@@ -37,3 +37,5 @@ debug.log
 *.bak-*
 .DS_Store
 Thumbs.db
+
+companion/dist-private/

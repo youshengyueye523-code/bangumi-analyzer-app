@@ -1,9 +1,10 @@
 export type UiErrorCode = 'PORT_IN_USE'|'PROCESS_EXITED'|'DATA_LOCKED'|'INTEGRITY_FAILED'|'TIMEOUT'|'BRIDGE_UNAVAILABLE'|'UNKNOWN';
+export type AllowedAnalyzerRoute = '/' | '/library' | '/analysis' | '/series' | '/profile' | '/diagnostics';
 export interface BridgeError { code: UiErrorCode; runtimeCode: string; message: string; hint?: string }
 export interface CompanionStatus {
   protocolVersion: 1;
   rawState: 'idle'|'checking'|'starting'|'ready'|'stopping'|'stopped'|'failed';
-  package: { state: 'unknown'|'checking'|'valid'|'invalid'; version?: string };
+  package: { state: 'unknown'|'checking'|'valid'|'invalid'; version?: string; distributionRevision?: number; files?: number };
   ownsProcess: boolean;
   logs: CompanionLog[];
   state: 'unknown'|'stopped'|'starting'|'running'|'stopping'|'error';
@@ -19,7 +20,7 @@ export interface CompanionBridge {
   getStatus(): Promise<CompanionStatus>;
   startAnalyzer(): Promise<CompanionStatus>;
   stopAnalyzer(): Promise<CompanionStatus>;
-  openAnalyzer(): Promise<OpenResult>;
+  openAnalyzer(route?: AllowedAnalyzerRoute): Promise<OpenResult>;
   getLogs(): Promise<CompanionLog[]>;
   onStatus(listener: (status: CompanionStatus) => void): () => void;
   onLogs(listener: (logs: CompanionLog[]) => void): () => void;

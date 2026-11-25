@@ -1,4 +1,4 @@
-import { AnalyzerSupervisor } from './supervisor.mjs';
+import { ALLOWED_ROUTES, AnalyzerSupervisor } from './supervisor.mjs';
 
 // Private stdio transport only. No HTTP listener, web-origin access, arbitrary paths, URLs or PIDs in requests.
 let supervisor, pending = 0, closing = false;
@@ -35,14 +35,24 @@ if (supervisor) {
     try {
       request = JSON.parse(line);
       if (!request || !Number.isSafeInteger(request.id) || request.id < 0 ||
-          !['getStatus', 'startAnalyzer', 'stopAnalyzer', 'openAnalyzer'].includes(request.method) ||
-          Object.keys(request).some(k => k !== 'id' && k !== 'method')) throw new Error();
+          !['getStatus', 'startAnalyzer', 'stopAnalyzer', 'openAnalyzer'].includes(request.method)) throw new Error();
+      const keys = Object.keys(request);
+      if (request.method === 'openAnalyzer') {
+        if (keys.some(k => k !== 'id' && k !== 'method' && k !== 'route')) throw new Error();
+        if (request.route !== undefined && (typeof request.route !== 'string' || !ALLOWED_ROUTES.has(request.route))) throw new Error();
+      } else if (keys.some(k => k !== 'id' && k !== 'method')) {
+        throw new Error();
+      }
     } catch { invalid(); return; }
     if (closing || pending >= 8) { invalid('BUSY', request.id); return; }
     pending++;
     void (async () => {
       try {
-        const result = request.method === 'getStatus' ? { ok: true, status: supervisor.getStatus() } : await supervisor[request.method]();
+        const result = request.method === 'getStatus'
+          ? { ok: true, status: supervisor.getStatus() }
+          : request.method === 'openAnalyzer'
+            ? await supervisor.openAnalyzer(request.route ?? '/')
+            : await supervisor[request.method]();
         send({ id: request.id, ...result });
       } catch { send({ id: request.id, ok: false, error: { code: 'INTERNAL', message: '运行核心操作失败，未输出底层错误。' } }); }
       finally { pending--; }

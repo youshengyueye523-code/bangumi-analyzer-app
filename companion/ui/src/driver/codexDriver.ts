@@ -22,6 +22,7 @@ import { ingestRuntimeLogs } from '../state/feedback';
 import {
   describeRuntimeError,
   EMPTY_STATUS,
+  type AnalyzerRoute,
   type AnalyzerRunState,
   type AnalyzerStatus,
   type CompanionDriver,
@@ -69,6 +70,7 @@ interface RawRuntimeResult {
   error?: RawRuntimeError;
   opened?: boolean;
   url?: string;
+  openedUrl?: string;
 }
 
 interface CompanionBridge {
@@ -76,7 +78,7 @@ interface CompanionBridge {
   getStatus(): RawRuntimeStatus | RawRuntimeResult | Promise<RawRuntimeStatus | RawRuntimeResult>;
   startAnalyzer(): Promise<RawRuntimeResult | RawRuntimeStatus>;
   stopAnalyzer(): Promise<RawRuntimeResult | RawRuntimeStatus>;
-  openAnalyzer(): Promise<RawRuntimeResult | { opened: boolean; url: string; error?: RawRuntimeError }>;
+  openAnalyzer(route?: AnalyzerRoute): Promise<RawRuntimeResult | { opened: boolean; url: string; error?: RawRuntimeError }>;
   getLogs?(): Promise<RuntimeLogEntry[]>;
   onStatus?(cb: (s: RawRuntimeStatus | RawRuntimeResult) => void): () => void;
   onLogs?(cb: (logs: RuntimeLogEntry[]) => void): () => void;
@@ -246,7 +248,7 @@ export function createCodexDriver(): CompanionDriver {
       }
     },
 
-    async openAnalyzer(): Promise<OpenResult> {
+    async openAnalyzer(route: AnalyzerRoute = '/'): Promise<OpenResult> {
       const b = bridge();
       if (!b) {
         return {
@@ -256,10 +258,10 @@ export function createCodexDriver(): CompanionDriver {
         };
       }
       try {
-        const res = await b.openAnalyzer();
+        const res = await b.openAnalyzer(route);
         if ('ok' in res) {
           const status = normalizeStatus(res);
-          const url = status.url ?? res.url ?? '';
+          const url = res.openedUrl ?? res.url ?? status.url ?? '';
           if (!res.ok) {
             const err = res.error ?? status.error;
             return {

@@ -6,13 +6,20 @@ import { request } from 'node:http';
 import { join, resolve } from 'node:path';
 import { checkPackage, fail, normalPath, RuntimeError, safeData } from './package-check.mjs';
 
+export const ALLOWED_ROUTES = new Set(['/', '/library', '/analysis', '/series', '/profile', '/diagnostics']);
+
+export function normalizeAllowedRoute(route = '/') {
+  if (typeof route !== 'string' || !ALLOWED_ROUTES.has(route)) fail('OPEN_FAILED');
+  return route;
+}
+
 const delay = ms => new Promise(r => setTimeout(r, ms));
 const messages = {
   UNSAFE_PATH: '必须使用独立的普通目录，不能链接或指向正式数据。',
   PACKAGE_MISSING: '分发包不完整或目录不存在，请重新完整解包。',
   PACKAGE_INVALID: '分发清单或目录内容不合法，请使用干净的独立分发包。',
   PACKAGE_DAMAGED: '分发文件校验失败，请重新完整解包，不要覆盖个人数据。',
-  PACKAGE_UNSUPPORTED: '仅支持 Windows x64 的 Analyzer 2.0.0 正式分发包（r2 / r3）。',
+  PACKAGE_UNSUPPORTED: '仅支持 Windows x64 的 Analyzer 2.0.0 正式分发包（r2–r5）。',
   PACKAGE_ACCESS: '无法读写分发目录，请使用有权限的独立本地目录。',
   SESSION_LOCKED: '该副本已有会话锁；不会接管、探测或停止已有实例。',
   LOCK_CHANGED: '会话锁已变化，未删除他人的锁，请人工核查。',
@@ -52,7 +59,29 @@ async function reservePort(port) {
 }
 
 export async function openDefaultBrowser(url) {
-  if (!/^http:\/\/127\.0\.0\.1:\d+\/$/.test(url) || new URL(url).port === '8787') fail('OPEN_FAILED');
+  let parsed;
+  try {
+    parsed = new URL(String(url));
+  } catch {
+    fail('OPEN_FAILED');
+  }
+  const p = Number(parsed.port);
+  if (
+    parsed.protocol !== 'http:' ||
+    parsed.hostname !== '127.0.0.1' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash ||
+    !Number.isInteger(p) ||
+    p < 1024 ||
+    p > 65535 ||
+    p === 8787 ||
+    !ALLOWED_ROUTES.has(parsed.pathname) ||
+    url !== `http://127.0.0.1:${p}${parsed.pathname}`
+  ) {
+    fail('OPEN_FAILED');
+  }
   await new Promise((yes, no) => {
     const child = spawn(join(process.env.SystemRoot ?? 'C:\\Windows', 'System32/cmd.exe'), ['/d', '/c', 'start', '""', url],
       { windowsHide: true, stdio: 'ignore', env: serviceEnvironment('', 0) });
@@ -253,7 +282,8 @@ export class AnalyzerSupervisor {
     })().finally(() => { this.#stopping = null; });
     return this.#stopping;
   }
-  async openAnalyzer() {
+  async openAnalyzer(route = '/') {
+    const normalizedRoute = normalizeAllowedRoute(route);
     const s = this.#session;
     if (this.#state !== 'ready' || !s || this.#stopRequested) return this.#result(false, new RuntimeError('NOT_READY'));
     if (!await this.#healthy(s)) {
@@ -262,7 +292,8 @@ export class AnalyzerSupervisor {
     }
     // Re-check after await: stop/start must not open a stale or replacement address.
     if (this.#session !== s || this.#state !== 'ready' || this.#stopRequested || s.exited) return this.#result(false, new RuntimeError('NOT_READY'));
-    try { await this.#opener(s.url); this.#log('info', 'BROWSER_HANDOFF'); return this.#result(true); }
+    const targetUrl = new URL(normalizedRoute, s.url).toString();
+    try { await this.#opener(targetUrl); this.#log('info', 'BROWSER_HANDOFF'); return { ...this.#result(true), openedUrl: targetUrl }; }
     catch { this.#log('error', 'OPEN_FAILED'); return this.#result(false, new RuntimeError('OPEN_FAILED')); }
   }
 }

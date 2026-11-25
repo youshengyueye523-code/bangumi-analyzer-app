@@ -1,8 +1,8 @@
 # 开发者与构建指南 (Contributing & Building from Source)
 
-如果你只是想在 Windows 上使用 Bangumi Analyzer，**不需要阅读本页或自行编译源码**，请直接前往 [GitHub Releases](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0-rc4) 下载安装版或便携版。
+如果你只是想在 Windows 上使用 Bangumi Analyzer，**不需要阅读本页或自行编译源码**，请直接前往 [GitHub Releases](https://github.com/youshengyueye523-code/bangumi-analyzer-app/releases/tag/v2.0.0) 下载 `v2.0.0` 正式版安装器或便携版。
 
-本指南面向希望阅读源码、运行测试、本地开发或自行构建发行包的开发者。
+本指南面向希望阅读源码、运行测试、本地开发或自行构建发行包的开发者。另可查看 [更新日志 (CHANGELOG.md)](./CHANGELOG.md)。
 
 ---
 
@@ -68,6 +68,13 @@ pnpm -C packages/web run test
 
 # Companion 宿主安全、GPU 策略、安装恢复与启动快捷方式单测
 node --test companion/host/test/boundary.test.mjs companion/host/test/gpu-policy.test.mjs companion/host/test/setup-recovery.test.mjs companion/host/test/startup-shortcut.test.mjs
+
+# Companion Runtime 生命周期与 UI 自动启动协调器单测
+node --test companion/runtime/test/supervisor.test.mjs
+node --experimental-strip-types --test companion/ui/test/autoLaunch.test.mts
+
+# Companion UI 类型检查与构建
+npm --prefix companion/ui run build
 ```
 
 ---
@@ -103,7 +110,7 @@ pnpm build
 node scripts/distribution/build.mjs
 ```
 
-执行后会在 `dist/distribution-<id>/` 下生成 `Bangumi-Analyzer-2.0.0-windows-x64-r3.zip` 及对应的 SHA-256。
+执行后会在 `dist/distribution-<id>/` 下生成 `Bangumi-Analyzer-2.0.0-windows-x64-r5.zip` 及对应的 SHA-256。
 
 ### 第二步：安装 Companion 依赖并打包 Windows Setup.exe 与 Portable.zip
 
@@ -113,14 +120,15 @@ npm --prefix companion/ui install
 npm --prefix companion/host install
 
 # 传入上一步生成的 Analyzer ZIP 路径与校验值（或留空 ANALYZER_BUNDLE_SHA256 跳过固定哈希匹配）
-$env:ANALYZER_BUNDLE_ZIP = ".\dist\distribution-<id>\Bangumi-Analyzer-2.0.0-windows-x64-r3.zip"
+$env:ANALYZER_BUNDLE_ZIP = ".\dist\distribution-<id>\Bangumi-Analyzer-2.0.0-windows-x64-r5.zip"
 $env:ANALYZER_BUNDLE_SHA256 = ""
 node companion/dist-scripts/package-companion.mjs
 ```
 
 产物输出在 `companion/dist/`：
-- `Bangumi-Analyzer-Companion-Setup-2.0.0-rc4-win-x64.exe`
-- `Bangumi-Analyzer-Companion-Portable-2.0.0-rc4-win-x64.zip`
+- `Bangumi-Analyzer-Companion-Setup-2.0.0-win-x64.exe`
+- `Bangumi-Analyzer-Companion-Portable-2.0.0-win-x64.zip`
+- `Bangumi-Analyzer-2.0.0-windows-x64-r5.zip`
 - `SHA256SUMS.txt` 与 `RELEASE_MANIFEST.json`
 
 ---

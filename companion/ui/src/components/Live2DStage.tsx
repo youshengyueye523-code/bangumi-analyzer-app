@@ -9,9 +9,12 @@ import { PINK_SAKURA_DRAWING, PINK_SAKURA_REGIONS, PINK_SAKURA_STATE_MAP } from 
 import {
   applyPixiCspAdapter,
   destroyLive2dResources,
+  getActiveLive2dStageCount,
   patchCubism5ModelProto,
   probeCanvasWebglSupport,
+  releaseLive2dStage,
   resolveLive2dFpsTarget,
+  retainLive2dStage,
   type FpsPolicyMode,
 } from '../assets/xiaofan/cubism5Compat';
 import { usePrefs } from '../state/prefs';
@@ -26,14 +29,32 @@ export type Live2DStageReason =
   | 'gpu_context_lost'
   | 'load_error';
 
+interface PreparedBundleAssets {
+  bundle: PinkSakuraModelBundle;
+  mocBytes: Uint8Array;
+}
+
 let coreLoadPromise: Promise<void> | null = null;
 let cachedBundlePromise: Promise<PinkSakuraModelBundle> | null = null;
+let cachedPreparedAssets: PreparedBundleAssets | null = null;
+let activeBundleLookup: Map<string, unknown> | null = null;
 
-function base64ToArrayBuffer(b64: string): ArrayBuffer {
+function base64ToUint8Array(b64: string): Uint8Array {
   const bin = atob(b64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
-  return bytes.buffer;
+  return bytes;
+}
+
+function getPreparedBundleAssets(bundle: PinkSakuraModelBundle): PreparedBundleAssets {
+  if (cachedPreparedAssets && cachedPreparedAssets.bundle === bundle) {
+    return cachedPreparedAssets;
+  }
+  cachedPreparedAssets = {
+    bundle,
+    mocBytes: base64ToUint8Array(bundle.mocBase64),
+  };
+  return cachedPreparedAssets;
 }
 
 async function ensureCubismCoreScript(): Promise<void> {
@@ -71,6 +92,7 @@ function registerBundleMiddleware(
   Live2DLoader: typeof import('pixi-live2d-display/cubism4').Live2DLoader,
   bundle: PinkSakuraModelBundle,
 ) {
+  const prepared = getPreparedBundleAssets(bundle);
   const virtualBase = 'companion://pink-sakura/';
   const lookup = new Map<string, unknown>();
   lookup.set(`${virtualBase}PinkSakura.model3.json`, {
@@ -80,7 +102,7 @@ function registerBundleMiddleware(
       Textures: bundle.textures,
     },
   });
-  lookup.set(`${virtualBase}${bundle.model3.FileReferences.Moc}`, base64ToArrayBuffer(bundle.mocBase64));
+  lookup.set(`${virtualBase}${bundle.model3.FileReferences.Moc}`, prepared.mocBytes.slice().buffer);
   if (bundle.model3.FileReferences.Physics && bundle.physics) {
     lookup.set(`${virtualBase}${bundle.model3.FileReferences.Physics}`, bundle.physics);
   }
@@ -96,6 +118,7 @@ function registerBundleMiddleware(
   for (const exp of bundle.model3.FileReferences.Expressions ?? []) {
     if (bundle.expressions[exp.Name]) lookup.set(`${virtualBase}${exp.File}`, bundle.expressions[exp.Name]);
   }
+  activeBundleLookup = lookup;
 
   // Register once in Live2DLoader middleware chain so XHR/fetch is never invoked for local model bundles.
   const tag = '__companionPinkSakuraMiddleware';
@@ -103,8 +126,8 @@ function registerBundleMiddleware(
     (Live2DLoader as unknown as Record<string, boolean>)[tag] = true;
     Live2DLoader.middlewares.unshift(async (context, next) => {
       const target = context.settings ? context.settings.resolveURL(context.url) : context.url;
-      if (lookup.has(target)) {
-        context.result = lookup.get(target);
+      if (activeBundleLookup?.has(target)) {
+        context.result = activeBundleLookup.get(target);
         return;
       }
       return next();
@@ -134,7 +157,11 @@ export function Live2DStage({
   const directorRef = useRef(new PerformanceDirector());
   const stateRef = useRef<MascotState>(state);
   const onInteractionRef = useRef(onInteraction);
+  const onReadyRef = useRef(onReady);
+  const onFallbackRef = useRef(onFallback);
   onInteractionRef.current = onInteraction;
+  onReadyRef.current = onReady;
+  onFallbackRef.current = onFallback;
   const lastDtSecRef = useRef<number>(1 / 60);
   const lastInteractNonceRef = useRef<number>(interactNonce);
   const reduceMotionRef = useRef(false);
@@ -148,36 +175,64 @@ export function Live2DStage({
   fpsModeRef.current = p.live2dFpsMode;
 
   useEffect(() => {
+    retainLive2dStage();
+    let stageReleased = false;
+    const releaseStageOnce = () => {
+      if (stageReleased) return getActiveLive2dStageCount();
+      stageReleased = true;
+      return releaseLive2dStage();
+    };
     let disposed = false;
     let app: PixiNS.Application | null = null;
     let pixiMod: typeof PixiNS | null = null;
     let resizeObs: ResizeObserver | null = null;
     let bundleTextures: string[] = [];
     let winMinimized = false;
+    let prevWinFull: boolean | undefined;
+    let prevWinMax: boolean | undefined;
+    let prevScaleFactor: number | undefined;
     let unsubWinState: (() => void) | undefined;
     let internalEventTarget: { off?: (evt: string, fn: () => void) => void } | null = null;
     let onAfterMotionRef: (() => void) | null = null;
     let onBeforeCommitRef: (() => void) | null = null;
     let armRig: ArmRigRenderer | null = null;
+    let fitRaf = 0;
+    let fitTimer: ReturnType<typeof setTimeout> | null = null;
+    let resetClockFn: (() => void) | null = null;
+    let scheduleViewportSyncFn: (() => void) | null = null;
     const canvasEl = canvasRef.current;
 
     const handleContextLost = (e: Event) => {
       e.preventDefault();
       if (disposed) return;
       disposed = true;
+      if (fitRaf) cancelAnimationFrame(fitRaf);
+      if (fitTimer) clearTimeout(fitTimer);
       app?.ticker?.stop();
-      destroyLive2dResources({ model: modelRef.current, app, pixi: pixiMod, textureUrls: bundleTextures });
+      const remaining = releaseStageOnce();
+      destroyLive2dResources({
+        model: modelRef.current,
+        app,
+        pixi: pixiMod,
+        textureUrls: bundleTextures,
+        preserveSharedTextures: remaining > 0,
+      });
       modelRef.current = null;
       appRef.current = null;
       app = null;
-      onFallback?.('gpu_context_lost', 'WebGL context lost');
+      onFallbackRef.current?.('gpu_context_lost', 'WebGL context lost');
     };
 
     const syncTickerPaused = () => {
       if (!app || disposed) return;
       const paused = document.hidden || winMinimized || reduceMotionRef.current;
-      if (paused) app.ticker.stop();
-      else if (!app.ticker.started) app.ticker.start();
+      if (paused) {
+        app.ticker.stop();
+      } else {
+        resetClockFn?.();
+        if (!app.ticker.started) app.ticker.start();
+        scheduleViewportSyncFn?.();
+      }
       if (canvasRef.current) {
         canvasRef.current.dataset.tickerPaused = paused ? 'true' : 'false';
       }
@@ -187,29 +242,44 @@ export function Live2DStage({
     document.addEventListener('visibilitychange', syncTickerPaused);
     if (window.companionWindow?.onState) {
       unsubWinState = window.companionWindow.onState((ws) => {
+        const wasMinimized = winMinimized;
         winMinimized = Boolean(ws.isMinimized);
+        const stateChanged =
+          (prevWinFull !== undefined && prevWinFull !== Boolean(ws.isFullScreen)) ||
+          (prevWinMax !== undefined && prevWinMax !== Boolean(ws.isMaximized)) ||
+          (prevScaleFactor !== undefined && ws.scaleFactor !== undefined && Math.abs(prevScaleFactor - ws.scaleFactor) > 0.005);
+        prevWinFull = Boolean(ws.isFullScreen);
+        prevWinMax = Boolean(ws.isMaximized);
+        prevScaleFactor = ws.scaleFactor;
         syncTickerPaused();
+        if ((wasMinimized && !winMinimized) || stateChanged) {
+          scheduleViewportSyncFn?.();
+        }
       });
     }
 
     async function boot() {
       const mb = getModelBridge();
       if (!mb) {
-        onFallback?.('bridge_unavailable');
+        releaseStageOnce();
+        onFallbackRef.current?.('bridge_unavailable');
         return;
       }
       const st = await mb.getStatus();
       if (disposed) return;
       if (st.gpuStatus && !st.gpuStatus.webglAllowed) {
-        onFallback?.('gpu_disabled', st.gpuStatus.reason);
+        releaseStageOnce();
+        onFallbackRef.current?.('gpu_disabled', st.gpuStatus.reason);
         return;
       }
       if (!st.ok || !st.modelAssetsReady || !st.hasCubismCore) {
-        onFallback?.('core_missing');
+        releaseStageOnce();
+        onFallbackRef.current?.('core_missing');
         return;
       }
       if (!probeCanvasWebglSupport(document.createElement('canvas'))) {
-        onFallback?.('webgl_unavailable', 'WEBGL_CONTEXT_UNAVAILABLE');
+        releaseStageOnce();
+        onFallbackRef.current?.('webgl_unavailable', 'WEBGL_CONTEXT_UNAVAILABLE');
         return;
       }
 
@@ -217,8 +287,9 @@ export function Live2DStage({
         await ensureCubismCoreScript();
       } catch (err) {
         if (!disposed) {
+          releaseStageOnce();
           const msg = err instanceof Error ? err.message : String(err);
-          onFallback?.(msg.includes('Content Security') ? 'csp_wasm_blocked' : 'load_error', msg);
+          onFallbackRef.current?.(msg.includes('Content Security') ? 'csp_wasm_blocked' : 'load_error', msg);
         }
         return;
       }
@@ -228,7 +299,10 @@ export function Live2DStage({
         if (!cachedBundlePromise) cachedBundlePromise = mb.loadPinkSakuraBundle();
         const bundle = await cachedBundlePromise;
         if (!bundle.ok || disposed || !canvasRef.current) {
-          onFallback?.('load_error', bundle.error);
+          if (!disposed) {
+            releaseStageOnce();
+            onFallbackRef.current?.('load_error', bundle.error);
+          }
           return;
         }
         bundleTextures = bundle.textures;
@@ -247,8 +321,8 @@ export function Live2DStage({
         Live2DModel.registerTicker(PIXI.Ticker);
         app = new PIXI.Application({
           view: canvasRef.current,
-          width: canvasRef.current.clientWidth || 320,
-          height: canvasRef.current.clientHeight || 420,
+          width: Math.max(120, canvasRef.current.clientWidth || 320),
+          height: Math.max(160, canvasRef.current.clientHeight || 420),
           backgroundAlpha: 0,
           antialias: true,
           autoDensity: true,
@@ -342,15 +416,27 @@ export function Live2DStage({
 
         let lastFittedW = 0;
         let lastFittedH = 0;
+        let lastFittedDpr = 0;
         const containerEl = canvasRef.current.parentElement ?? canvasRef.current;
         const fitModel = (force = false) => {
-          if (!app || !model || !canvasRef.current) return;
+          if (disposed || !app || !model || !canvasRef.current) return;
+          if (document.hidden || winMinimized) return;
           const hostBox = canvasRef.current.parentElement ?? canvasRef.current;
-          const w = Math.max(120, hostBox.clientWidth);
-          const h = Math.max(160, hostBox.clientHeight);
-          if (!force && w === lastFittedW && h === lastFittedH) return;
+          const rawW = hostBox.clientWidth;
+          const rawH = hostBox.clientHeight;
+          if (rawW < 32 || rawH < 32) return;
+          const w = Math.max(120, rawW);
+          const h = Math.max(160, rawH);
+          const nextDpr = Math.min(window.devicePixelRatio || 1, 2);
+          if (!force && w === lastFittedW && h === lastFittedH && Math.abs(nextDpr - lastFittedDpr) < 0.01) {
+            return;
+          }
           lastFittedW = w;
           lastFittedH = h;
+          lastFittedDpr = nextDpr;
+          if (Math.abs((app.renderer.resolution || 1) - nextDpr) >= 0.01) {
+            app.renderer.resolution = nextDpr;
+          }
           app.renderer.resize(w, h);
           canvasRef.current.style.width = '100%';
           canvasRef.current.style.height = '100%';
@@ -367,11 +453,28 @@ export function Live2DStage({
           model.anchor.set(0.5, 0);
           model.x = w * 0.5;
           model.y = variant === 'half' ? h * 0.012 : h * 0.02;
+          app.render();
         };
 
+        const scheduleViewportSync = () => {
+          if (disposed) return;
+          if (fitRaf) cancelAnimationFrame(fitRaf);
+          fitRaf = requestAnimationFrame(() => {
+            fitRaf = 0;
+            fitModel(true);
+          });
+          if (fitTimer) clearTimeout(fitTimer);
+          fitTimer = setTimeout(() => {
+            fitTimer = null;
+            fitModel(true);
+          }, 110);
+        };
+        scheduleViewportSyncFn = scheduleViewportSync;
+
         fitModel(true);
-        resizeObs = new ResizeObserver(() => fitModel(false));
+        resizeObs = new ResizeObserver(() => scheduleViewportSync());
         resizeObs.observe(containerEl);
+        window.addEventListener('resize', scheduleViewportSync);
 
         // Expose honest runtime telemetry on canvas element
         if (canvasRef.current) {
@@ -399,9 +502,16 @@ export function Live2DStage({
         let fpsWinFrames = 0;
         let lastTelemetryTs = lastVsyncTs;
         let slowFrameStreak = 0;
+        resetClockFn = () => {
+          const ts = performance.now();
+          lastVsyncTs = ts;
+          lastRenderedTs = ts;
+          fpsWinStart = ts;
+          fpsWinFrames = 0;
+        };
         app.ticker.add(() => {
           const now = performance.now();
-          if (reduceMotionRef.current || document.hidden) {
+          if (reduceMotionRef.current || document.hidden || winMinimized) {
             lastVsyncTs = now;
             lastRenderedTs = now;
             fpsWinStart = now;
@@ -483,12 +593,14 @@ export function Live2DStage({
           app.render();
           if (canvasRef.current) canvasRef.current.dataset.tickerPaused = 'true';
         } else {
+          resetClockFn?.();
           app.ticker.start();
         }
-        onReady?.();
+        onReadyRef.current?.();
       } catch (err) {
         if (!disposed) {
-          onFallback?.('load_error', err instanceof Error ? err.message : String(err));
+          releaseStageOnce();
+          onFallbackRef.current?.('load_error', err instanceof Error ? err.message : String(err));
         }
       }
     }
@@ -496,6 +608,13 @@ export function Live2DStage({
     void boot();
     return () => {
       disposed = true;
+      if (fitRaf) cancelAnimationFrame(fitRaf);
+      if (fitTimer) clearTimeout(fitTimer);
+      if (scheduleViewportSyncFn) {
+        window.removeEventListener('resize', scheduleViewportSyncFn);
+      }
+      scheduleViewportSyncFn = null;
+      resetClockFn = null;
       unsubWinState?.();
       document.removeEventListener('visibilitychange', syncTickerPaused);
       if (canvasEl) canvasEl.removeEventListener('webglcontextlost', handleContextLost, false);
@@ -507,16 +626,18 @@ export function Live2DStage({
       directorRef.current.setExpressionHandler(() => {});
       armRig?.dispose();
       armRig = null;
+      const remaining = releaseStageOnce();
       destroyLive2dResources({
         model: modelRef.current,
         app,
         pixi: pixiMod,
         textureUrls: bundleTextures,
+        preserveSharedTextures: remaining > 0,
       });
       modelRef.current = null;
       appRef.current = null;
     };
-  }, [variant, onReady, onFallback]);
+  }, [variant]);
 
   // Apply 8-state PerformanceDirector state & expressions cleanly + honor reduceMotion & live2dFpsMode
   useEffect(() => {

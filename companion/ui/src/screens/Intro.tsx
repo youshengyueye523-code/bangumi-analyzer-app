@@ -59,6 +59,9 @@ export function IntroScreen() {
         aiConfigured: Boolean(s.aiConfigured),
         aiModel: s.aiModel || '',
         autoStart: s.autoStart,
+        autoOpen: s.autoOpen,
+        skipIntro: s.skipIntro,
+        analyzerTheme: s.analyzerTheme ?? 'system',
       });
       toast('success', '已重新连接原 Analyzer 安装', '保留原数据库与配置，无需重新同步');
       flow.go('home');

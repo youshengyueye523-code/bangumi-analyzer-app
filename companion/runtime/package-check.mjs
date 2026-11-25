@@ -89,7 +89,7 @@ export async function checkPackage(path) {
     await walk(root);
     const release = JSON.parse(await readFile(join(root, 'release.json'), 'utf8'));
     const rev = Number(release.distributionRevision);
-    if (release.product !== 'Bangumi Analyzer' || release.version !== '2.0.0' || !(Number.isInteger(rev) && rev >= 2 && rev <= 4) ||
+    if (release.product !== 'Bangumi Analyzer' || release.version !== '2.0.0' || !(Number.isInteger(rev) && rev >= 2 && rev <= 5) ||
         release.flavor !== 'full-local' || release.platform !== 'windows-x64' || !/^v24\./.test(release.node) ||
         release.runtimeSha256 !== await sha256(join(root, 'runtime/node.exe'))) fail('PACKAGE_UNSUPPORTED');
     await safeData(root);

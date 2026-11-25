@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { checkPackage } from '../runtime/package-check.mjs';
 import { RuntimeClient } from './runtime-client.mjs';
-import { errorInfo, HostError, idle, toUi } from './contract.mjs';
+import { ALLOWED_ROUTES, errorInfo, HostError, idle, safeOpenUrl, toUi } from './contract.mjs';
 
 const cliPath = join(dirname(fileURLToPath(import.meta.url)), '../runtime/cli.mjs');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -78,12 +78,17 @@ export class BridgeEngine extends EventEmitter {
     })().finally(() => { this.#stop = null; });
     return this.#stop;
   }
-  async openAnalyzer() {
+  async openAnalyzer(route = '/') {
     if (this.#closing) return { opened: false, url: '', error: errorInfo('HOST_CLOSING') };
+    if (typeof route !== 'string' || !ALLOWED_ROUTES.has(route)) return { opened: false, url: '', error: errorInfo('OPEN_FAILED') };
     if (!this.#client || this.#raw.state !== 'ready' || this.#fault) return { opened: false, url: '', error: errorInfo('NOT_READY') };
     try {
-      const result = await this.#client.call('openAnalyzer', 10000);
-      return result.ok && this.#raw.state === 'ready' ? { opened: true, url: this.#raw.url } : { opened: false, url: '', error: errorInfo(result.error?.code ?? this.#raw.error?.code ?? 'NOT_READY') };
+      const result = await this.#client.call('openAnalyzer', 10000, { route });
+      if (result.ok && this.#raw.state === 'ready') {
+        const expectedUrl = safeOpenUrl(result.url) ?? safeOpenUrl(new URL(route, this.#raw.url).toString()) ?? this.#raw.url;
+        return { opened: true, url: expectedUrl };
+      }
+      return { opened: false, url: '', error: errorInfo(result.error?.code ?? this.#raw.error?.code ?? 'NOT_READY') };
     } catch (e) { return { opened: false, url: '', error: errorInfo(e.code) }; }
   }
   close() {

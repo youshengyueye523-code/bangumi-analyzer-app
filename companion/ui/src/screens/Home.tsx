@@ -34,8 +34,14 @@ import { MaintenancePanel } from '../components/MaintenancePanel';
 import { Mascot, MASCOT_STATES, type MascotState } from '../components/Mascot';
 import { INTERACTION_POOL, type InteractionVariantSpec } from '../assets/xiaofan/PerformanceDirector';
 import { ThirdPartyLicensesModal } from '../components/ThirdPartyLicenses';
-import { startAndAwaitReady, useAnalyzerStatus, useDriver, type AnalyzerError } from '../driver';
+import { startAndAwaitReady, useAnalyzerStatus, useDriver, type AnalyzerError, type AnalyzerRoute } from '../driver';
 import { getProductBridge } from '../driver/product';
+import {
+  armAutoOpenForNextReady,
+  clearAutoOpenError,
+  disarmAutoOpen,
+  useAutoOpenError,
+} from '../state/autoLaunch';
 import { useFlow } from '../state/flow';
 import { prefs, usePrefs } from '../state/prefs';
 import { clearLogs, log, toast, useLogs } from '../state/feedback';
@@ -43,13 +49,19 @@ import { playChime } from '../state/sound';
 import { scenario, useScenario, wait, jitter } from '../mock/scenario';
 import { SAMPLE_TITLES } from '../mock/setup';
 
-const ANALYZER_SHORTCUTS = [
-  { id: 'dashboard', label: '仪表盘', sub: '收藏全貌与近期趋势', icon: BarChart3 },
-  { id: 'library', label: '收藏库', sub: '多维筛选与条目细节', icon: Library },
-  { id: 'stats', label: '统计分析', sub: '评分分布与时间轴', icon: PieChart },
-  { id: 'series', label: '系列 / IP', sub: '关联作品聚合治理', icon: Layers },
-  { id: 'profile', label: '我的画像', sub: '证据与 AI 报告', icon: UserCheck },
-  { id: 'data', label: '数据中枢', sub: '备份、导出与完整性', icon: ShieldCheck },
+const ANALYZER_SHORTCUTS: Array<{
+  id: string;
+  route: AnalyzerRoute;
+  label: string;
+  sub: string;
+  icon: typeof BarChart3;
+}> = [
+  { id: 'dashboard', route: '/', label: '仪表盘', sub: '收藏全貌与近期趋势', icon: BarChart3 },
+  { id: 'library', route: '/library', label: '收藏库', sub: '多维筛选与条目细节', icon: Library },
+  { id: 'stats', route: '/analysis', label: '统计分析', sub: '评分分布与时间轴', icon: PieChart },
+  { id: 'series', route: '/series', label: '系列 / IP', sub: '关联作品聚合治理', icon: Layers },
+  { id: 'profile', route: '/profile', label: '我的画像', sub: '证据与 AI 报告', icon: UserCheck },
+  { id: 'data', route: '/diagnostics', label: '数据中枢', sub: '备份、导出与完整性', icon: ShieldCheck },
 ];
 
 const TABS: { id: 'overview' | 'maint' | 'logs' | 'prefs'; label: string }[] = [
@@ -87,7 +99,6 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
 
   const [tab, setTab] = useState<'overview' | 'maint' | 'logs' | 'prefs'>('overview');
   const [licenseOpen, setLicenseOpen] = useState(false);
-  const autoStartedRef = useRef(false);
   const [logFilter, setLogFilter] = useState<'all' | 'warn'>('all');
   const [copied, setCopied] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -96,6 +107,8 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
   const [syncLabel, setSyncLabel] = useState('');
   const [syncError, setSyncError] = useState<{ code: string; msg: string } | null>(null);
   const [openError, setOpenError] = useState<AnalyzerError | null>(null);
+  const autoOpenError = useAutoOpenError();
+  const activeOpenError = openError ?? autoOpenError;
   const [interactNonce, setInteractNonce] = useState(0);
   const [interactLine, setInteractLine] = useState<string | null>(null);
   const interactTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -112,6 +125,10 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
     void pb.getCompanionState().then((res) => {
       const gm = res?.state?.gpuMode;
       if (gm === 'auto' || gm === 'gl' || gm === 'd3d11' || gm === 'off') setGpuMode(gm);
+      const at = res?.state?.analyzerTheme;
+      if (at === 'system' || at === 'dark' || at === 'light') {
+        prefs.set({ analyzerTheme: at });
+      }
     }).catch(() => {});
   }, [pb]);
 
@@ -138,14 +155,6 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
   const nickname = pb ? p.nickname || '本地收藏家' : p.nickname || '汐音';
   const username = pb ? p.username || 'local' : p.username || 'shione_bgm';
   const collections = pb ? p.collections : p.collections || 842;
-
-  useEffect(() => {
-    if (!pb || autoStartedRef.current) return;
-    if (p.autoStart && p.skipIntro && (status.state === 'stopped' || status.state === 'unknown') && status.rawState === 'idle') {
-      autoStartedRef.current = true;
-      void startAndAwaitReady(driver);
-    }
-  }, [pb, p.autoStart, p.skipIntro, status.state, status.rawState, driver]);
 
   const filteredLogs = useMemo(() => {
     if (logFilter === 'all') return logs;
@@ -234,10 +243,13 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
   const handleStart = async () => {
     setPreviewState(null);
     setOpenError(null);
+    clearAutoOpenError();
+    if (p.autoOpen) armAutoOpenForNextReady();
     playChime('tap');
     log('info', '调用 driver.startAnalyzer()');
     const st = await startAndAwaitReady(driver);
     if (st.state !== 'running') {
+      disarmAutoOpen();
       playChime('warn');
       log('error', `startAnalyzer 未就绪：${st.error?.code ?? st.state} ${st.error?.message ?? ''}`);
       toast('danger', driver.kind === 'mock' ? 'Analyzer 启动失败（模拟）' : 'Analyzer 启动失败', st.error?.message);
@@ -246,20 +258,13 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
     playChime('ok');
     log('ok', `Analyzer 已就绪 · ${st.url ?? ''}${st.pid ? ` (pid ${st.pid})` : ''}`);
     toast('success', driver.kind === 'mock' ? 'Analyzer 已启动（模拟）' : 'Analyzer 已就绪', st.url ?? undefined);
-    if (p.autoOpen) {
-      const res = await driver.openAnalyzer();
-      if (res.opened) {
-        log('info', `自动打开网页端：${res.url}`);
-      } else if (res.error) {
-        setOpenError(res.error);
-        log('warn', `自动打开网页端失败：${res.error.code}`);
-      }
-    }
   };
 
   const handleStop = async () => {
     setPreviewState(null);
     setOpenError(null);
+    clearAutoOpenError();
+    disarmAutoOpen();
     playChime('tap');
     log('info', '调用 driver.stopAnalyzer()（安全等待任务与数据库退出）');
     const st = await driver.stopAnalyzer();
@@ -274,29 +279,42 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
     toast('info', driver.kind === 'mock' ? '已安全停止 Analyzer（模拟）' : 'Analyzer 已安全停止', '数据库已安全关闭。');
   };
 
-  const handleOpen = async (section?: string) => {
+  const handleOpen = async (route: AnalyzerRoute = '/', label?: string) => {
     if (status.state !== 'running') {
       playChime('warn');
-      toast('warning', '请先启动 Analyzer', '服务就绪后即可打开网页端。');
+      const title = label ? `无法打开「${label}」` : '请先启动 Analyzer';
+      const detail =
+        status.state === 'starting' || status.state === 'checking'
+          ? 'Analyzer 服务正在启动或校验中，请等待就绪后再打开。'
+          : '服务尚未启动，请先点击「启动 Analyzer」等待就绪。';
+      log('warn', `${title}（route=${route}，当前状态=${status.state}）`);
+      toast('warning', title, detail);
       return;
     }
     setOpenError(null);
-    const res = await driver.openAnalyzer();
+    clearAutoOpenError();
+    const res = await driver.openAnalyzer(route);
     if (!res.opened) {
       playChime('warn');
-      const err = res.error ?? { code: 'OPEN_FAILED', message: '未能自动打开系统默认浏览器' };
+      const err = res.error ?? {
+        code: 'OPEN_FAILED',
+        message: label ? `未能自动打开「${label}」` : '未能自动打开系统默认浏览器',
+        hint: '服务仍在运行，可复制本机地址手动打开。',
+      };
       setOpenError(err);
-      log('warn', `driver.openAnalyzer() 失败：${err.code}（服务仍在运行）`);
-      toast('warning', '未能自动打开浏览器', '服务仍在运行，可复制本机地址手动打开。');
+      log('warn', `driver.openAnalyzer(${route}) 失败：${err.code}（服务仍在运行）`);
+      toast('warning', label ? `未能自动打开「${label}」` : '未能自动打开浏览器', err.hint ?? '服务仍在运行，可复制本机地址手动打开。');
       return;
     }
     playChime('ok');
-    const target = section && driver.kind === 'mock' ? `${res.url}#/${section}` : res.url;
-    log('info', `调用 driver.openAnalyzer() → ${target}`);
+    const target = res.url;
+    log('info', `调用 driver.openAnalyzer(${route}) → ${target}`);
     toast(
       'success',
-      section && driver.kind === 'mock'
-        ? `打开「${ANALYZER_SHORTCUTS.find((x) => x.id === section)?.label}」（模拟）`
+      label
+        ? driver.kind === 'mock'
+          ? `打开「${label}」（模拟）`
+          : `已打开「${label}」`
         : driver.kind === 'mock'
           ? '已打开 Analyzer（模拟）'
           : '已唤醒默认浏览器',
@@ -428,9 +446,17 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
   }[status.state];
 
   const busy = status.state === 'checking' || status.state === 'starting' || status.state === 'stopping';
+  const pkgRev = status.package?.distributionRevision;
+  const pkgFiles = status.package?.files;
   const pkgLabel =
     status.package?.state === 'valid'
-      ? `r${status.package.distributionRevision ?? 3} · ${status.package.files ?? 3250} 文件已校验`
+      ? pkgRev && pkgFiles
+        ? `r${pkgRev} · ${pkgFiles} 文件已校验`
+        : pkgFiles
+          ? `${pkgFiles} 文件已校验`
+          : pkgRev
+            ? `r${pkgRev} · 完整性已校验`
+            : `v${status.version ?? '2.0.0'} · 完整性已校验`
       : status.package?.state === 'checking'
         ? '校验 SHA-256 中…'
         : status.package?.state === 'invalid'
@@ -477,7 +503,7 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
         {ANALYZER_SHORTCUTS.map((s) => {
           const I = s.icon;
           return (
-            <button key={s.id} className="shortcut" onClick={() => handleOpen(s.id)}>
+            <button key={s.id} className="shortcut" onClick={() => handleOpen(s.route, s.label)}>
               <span className="sc-ico">
                 <I size={16} />
               </span>
@@ -509,10 +535,11 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
           checked={p.autoOpen}
           onChange={(v) => {
             prefs.set({ autoOpen: v });
+            if (!v) disarmAutoOpen();
             void pb?.savePreferences({ autoOpen: v });
           }}
           label="服务启动后自动打开网页端"
-          desc="就绪后自动调用 openAnalyzer()"
+          desc="就绪后自动在默认浏览器打开一次首页（仅触发一次，不重复弹窗）"
         />
         <Switch
           checked={p.skipIntro}
@@ -569,11 +596,38 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
             ))}
           </div>
         </div>
+        <div className="gpu-pref-row">
+          <div className="gpu-pref-copy">
+            <strong>Analyzer 网页端主题</strong>
+            <span>控制浏览器打开网页端的明暗外观并同步至本机配置（与 Companion 界面主题相互独立）</span>
+          </div>
+          <div className="seg" role="group" aria-label="Analyzer 网页端主题">
+            {(
+              [
+                ['system', '跟随系统'],
+                ['dark', '深色'],
+                ['light', '浅色'],
+              ] as const
+            ).map(([mode, label]) => (
+              <button
+                key={mode}
+                className={cx('seg-btn', p.analyzerTheme === mode && 'on')}
+                onClick={() => {
+                  prefs.set({ analyzerTheme: mode });
+                  void pb?.savePreferences({ analyzerTheme: mode });
+                  toast('info', `Analyzer 网页端主题：${label}`, '新打开或已打开的网页端将同步生效。');
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
         {pb && (
           <div className="gpu-pref-row">
             <div className="gpu-pref-copy">
               <strong>Live2D GPU 兼容模式（重启生效）</strong>
-              <span>自动模式在双显卡环境优先启用 OpenGL，遇崩溃自动安全回退 2D 占位</span>
+              <span>自动模式在 Windows 双显卡环境优先启用 ANGLE D3D11，遇崩溃自动安全回退 2D 占位</span>
             </div>
             <div className="seg" role="group" aria-label="GPU 渲染模式">
               {(
@@ -749,14 +803,14 @@ export function HomeScreen({ isFullScreen = false }: { isFullScreen?: boolean })
             </div>
           )}
 
-          {openError && status.state === 'running' && (
+          {activeOpenError && status.state === 'running' && (
             <div className="banner banner-warn pop-in">
               <AlertTriangle size={17} />
               <div>
                 <b>
-                  {openError.message} <code>{openError.runtimeCode ?? openError.code}</code>
+                  {activeOpenError.message} <code>{activeOpenError.runtimeCode ?? activeOpenError.code}</code>
                 </b>
-                <span>{openError.hint}</span>
+                <span>{activeOpenError.hint}</span>
               </div>
               {status.url && (
                 <Button size="sm" variant="secondary" icon={<Copy size={13} />} onClick={handleCopy}>

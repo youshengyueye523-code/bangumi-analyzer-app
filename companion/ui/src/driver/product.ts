@@ -13,6 +13,7 @@ export interface CompanionPersistedState {
   autoStart: boolean;
   autoOpen: boolean;
   desktopShortcut: boolean;
+  analyzerTheme?: 'system' | 'dark' | 'light';
   gpuMode?: 'auto' | 'gl' | 'd3d11' | 'off';
   live2dFpsMode?: 'auto' | '30' | '60' | '120';
   updateFeedUrl?: string;
@@ -155,7 +156,7 @@ export interface ApplyUpdateResult {
 export interface CompanionProductBridge {
   version: number;
   getCompanionState(): Promise<ProductStateResponse>;
-  savePreferences(patch: Partial<Pick<CompanionPersistedState, 'skipIntro' | 'autoStart' | 'autoOpen' | 'desktopShortcut' | 'updateFeedUrl' | 'gpuMode' | 'live2dFpsMode'>>): Promise<{ ok: boolean; state?: CompanionPersistedState; error?: string }>;
+  savePreferences(patch: Partial<Pick<CompanionPersistedState, 'skipIntro' | 'autoStart' | 'autoOpen' | 'desktopShortcut' | 'updateFeedUrl' | 'analyzerTheme' | 'gpuMode' | 'live2dFpsMode'>>): Promise<{ ok: boolean; state?: CompanionPersistedState; error?: string }>;
   runEnvCheck(args: { id: string; targetDir?: string }): Promise<RealEnvCheckResult>;
   validateInstallDir(args: { rawPath: string }): Promise<DirValidationResult>;
   pickInstallDir(): Promise<{ canceled: boolean; path: string | null }>;

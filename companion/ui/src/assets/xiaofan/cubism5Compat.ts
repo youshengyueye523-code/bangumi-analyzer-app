@@ -108,10 +108,30 @@ export function patchCubism5ModelProto(cubism4Mod: unknown) {
 /**
  * Check whether the host WebGL2 / WebGL1 context can be created cleanly before handing off to PixiJS.
  */
+let activeLive2dStages = 0;
+
+export function retainLive2dStage(): number {
+  activeLive2dStages += 1;
+  return activeLive2dStages;
+}
+
+export function releaseLive2dStage(): number {
+  activeLive2dStages = Math.max(0, activeLive2dStages - 1);
+  return activeLive2dStages;
+}
+
+export function getActiveLive2dStageCount(): number {
+  return activeLive2dStages;
+}
+
 export function probeCanvasWebglSupport(canvas: HTMLCanvasElement): boolean {
   try {
     const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
-    return Boolean(gl && !gl.isContextLost());
+    const supported = Boolean(gl && !gl.isContextLost());
+    if (gl && 'getExtension' in gl) {
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    }
+    return supported;
   } catch {
     return false;
   }
@@ -126,11 +146,13 @@ export function destroyLive2dResources({
   app,
   pixi,
   textureUrls = [],
+  preserveSharedTextures = activeLive2dStages > 0,
 }: {
   model: Live2DModelType | null;
   app: PixiNS.Application | null;
   pixi: typeof PixiNS | null;
   textureUrls?: string[];
+  preserveSharedTextures?: boolean;
 }) {
   try {
     if (model) {
@@ -142,12 +164,16 @@ export function destroyLive2dResources({
   try {
     if (app) {
       app.ticker?.stop();
-      app.destroy(false, { children: true, texture: true, baseTexture: true });
+      app.destroy(false, {
+        children: true,
+        texture: !preserveSharedTextures,
+        baseTexture: !preserveSharedTextures,
+      });
     }
   } catch {
     /* ignore teardown errors on lost context */
   }
-  if (pixi?.utils) {
+  if (!preserveSharedTextures && pixi?.utils) {
     for (const url of textureUrls) {
       try {
         const tex = pixi.utils.TextureCache[url];

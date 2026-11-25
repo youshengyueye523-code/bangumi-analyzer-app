@@ -3,6 +3,13 @@ const invoke = method => (...args) => {
   if (args.length) return Promise.reject(new TypeError('Companion methods accept no arguments'));
   return ipcRenderer.invoke('companion:v1:invoke', { method });
 };
+const invokeOpenAnalyzer = (...args) => {
+  if (args.length > 1 || (args.length === 1 && typeof args[0] !== 'string')) {
+    return Promise.reject(new TypeError('openAnalyzer accepts at most one route string'));
+  }
+  const route = args[0];
+  return ipcRenderer.invoke('companion:v1:invoke', route === undefined ? { method: 'openAnalyzer' } : { method: 'openAnalyzer', route });
+};
 const invokeWindow = action => (...args) => {
   if (args.length) return Promise.reject(new TypeError('Companion window methods accept no arguments'));
   return ipcRenderer.invoke('companion:v1:window', { action });
@@ -46,7 +53,7 @@ if (process.isMainFrame) {
   contextBridge.exposeInMainWorld('companionBridge', Object.freeze({
     bridgeVersion: 1,
     getStatus: invoke('getStatus'), startAnalyzer: invoke('startAnalyzer'), stopAnalyzer: invoke('stopAnalyzer'),
-    openAnalyzer: invoke('openAnalyzer'), getLogs: invoke('getLogs'),
+    openAnalyzer: invokeOpenAnalyzer, getLogs: invoke('getLogs'),
     onStatus: subscribe('companion:v1:status'), onLogs: subscribe('companion:v1:logs'),
   }));
   contextBridge.exposeInMainWorld('companionWindow', Object.freeze({
@@ -55,6 +62,7 @@ if (process.isMainFrame) {
     toggleMaximize: invokeWindow('toggleMaximize'),
     toggleFullscreen: invokeWindow('toggleFullscreen'),
     exitFullscreen: invokeWindow('exitFullscreen'),
+    rendererReady: invokeWindow('rendererReady'),
     close: invokeWindow('close'),
     onState: subscribeWindow,
   }));

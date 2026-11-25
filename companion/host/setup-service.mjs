@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { constants as fsConst, existsSync } from 'node:fs';
-import { access, copyFile, lstat, mkdir, mkdtemp, readdir, readFile, rm, statfs, unlink, writeFile } from 'node:fs/promises';
+import { access, copyFile, lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, statfs, unlink, writeFile } from 'node:fs/promises';
 import { request as httpRequest } from 'node:http';
 import { freemem, homedir, release, totalmem } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
@@ -101,9 +101,9 @@ export async function inspectSessionLock(installDir) {
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(here, '../..');
-export const BUNDLED_ANALYZER_REVISION = 4;
-export const DEFAULT_R2_ZIP = join(REPO_ROOT, 'dist/distribution-2nUlPu/Bangumi-Analyzer-2.0.0-windows-x64-r4.zip');
-export const R2_ZIP_HASH = 'a773d96356cd659ad845926c1f3d695092e09b659d9a3a57e227fb49ca095445';
+export const BUNDLED_ANALYZER_REVISION = 5;
+export const DEFAULT_R2_ZIP = join(REPO_ROOT, 'dist/distribution-fSpGZY/Bangumi-Analyzer-2.0.0-windows-x64-r5.zip');
+export const R2_ZIP_HASH = 'b227f6632c9060642444e550e2bc3f2256450bad2e3c4b0420d00e31ed77bcfa';
 
 export function resolveCompanionHome(customHome) {
   if (customHome) return resolve(customHome);
@@ -113,6 +113,8 @@ export function resolveCompanionHome(customHome) {
 export function configPathFor(companionHome) {
   return join(companionHome, 'companion.json');
 }
+
+export const ANALYZER_THEMES = new Set(['system', 'dark', 'light']);
 
 const DEFAULT_STATE = {
   firstRunCompleted: false,
@@ -127,25 +129,62 @@ const DEFAULT_STATE = {
   autoStart: true,
   autoOpen: false,
   desktopShortcut: false,
+  analyzerTheme: 'system',
   gpuMode: 'auto',
   live2dFpsMode: 'auto',
   installedAt: null,
   lastSyncAt: null,
 };
 
+export async function readAnalyzerConfigTheme(installDir) {
+  if (!installDir) return null;
+  try {
+    const cfg = JSON.parse(await readFile(join(resolve(installDir), 'data', 'config.json'), 'utf8'));
+    return typeof cfg?.theme === 'string' && ANALYZER_THEMES.has(cfg.theme) ? cfg.theme : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeAnalyzerConfigThemeWhenStopped(installDir, theme) {
+  if (!installDir || !ANALYZER_THEMES.has(theme)) return false;
+  const target = resolve(installDir);
+  const lock = await inspectSessionLock(target);
+  if (lock.kind === 'active_external') return false;
+  const configFile = join(target, 'data', 'config.json');
+  try {
+    const raw = JSON.parse(await readFile(configFile, 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false;
+    if (raw.theme === theme) return true;
+    const next = { ...raw, theme };
+    const tmpFile = `${configFile}.tmp`;
+    await writeFile(tmpFile, `${JSON.stringify(next, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    await rename(tmpFile, configFile);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function readCompanionState(companionHome) {
+  let base;
   try {
     const raw = JSON.parse(await readFile(configPathFor(companionHome), 'utf8'));
-    return { ...DEFAULT_STATE, ...raw };
+    base = { ...DEFAULT_STATE, ...raw };
   } catch {
-    return { ...DEFAULT_STATE };
+    base = { ...DEFAULT_STATE };
   }
+  if (!ANALYZER_THEMES.has(base.analyzerTheme)) base.analyzerTheme = 'system';
+  const cfgTheme = await readAnalyzerConfigTheme(base.installDir);
+  if (cfgTheme) base.analyzerTheme = cfgTheme;
+  return base;
 }
 
 export async function writeCompanionState(companionHome, patch) {
   await mkdir(companionHome, { recursive: true });
   const cur = await readCompanionState(companionHome);
   const next = { ...cur, ...patch };
+  if (!ANALYZER_THEMES.has(next.analyzerTheme)) next.analyzerTheme = 'system';
   // Never store Bangumi Token or AI Key in companion.json; secrets live exclusively in Analyzer data/config.json.
   delete next.token;
   delete next.aiKey;
@@ -341,6 +380,7 @@ export async function reconnectExistingInstall(rawDir, companionHome) {
   let uid = null;
   let aiConfigured = false;
   let aiModel = '';
+  let analyzerTheme = null;
   try {
     const cfg = JSON.parse(await readFile(join(resolved, 'data', 'config.json'), 'utf8'));
     nickname = String(cfg?.nickname ?? '').trim();
@@ -348,6 +388,9 @@ export async function reconnectExistingInstall(rawDir, companionHome) {
     uid = typeof cfg?.uid === 'number' ? cfg.uid : null;
     aiConfigured = Boolean(cfg?.ai?.apiKey || cfg?.ai?.baseUrl);
     aiModel = String(cfg?.ai?.model ?? '');
+    if (typeof cfg?.theme === 'string' && ANALYZER_THEMES.has(cfg.theme)) {
+      analyzerTheme = cfg.theme;
+    }
   } catch {
     /* optional config.json */
   }
@@ -369,6 +412,7 @@ export async function reconnectExistingInstall(rawDir, companionHome) {
     uid,
     aiConfigured,
     aiModel,
+    ...(analyzerTheme ? { analyzerTheme } : {}),
     autoStart: true,
     installedAt: new Date().toISOString(),
   });

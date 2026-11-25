@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { serviceEnvironment } from '../runtime/supervisor.mjs';
-import { HostError, RUNTIME_CODES, validateStatus } from './contract.mjs';
+import { ALLOWED_ROUTES, HostError, RUNTIME_CODES, safeOpenUrl, validateStatus } from './contract.mjs';
 
 // Construct only AFTER the host has validated this exact package and its bundled executable.
 export class RuntimeClient extends EventEmitter {
@@ -50,13 +50,19 @@ export class RuntimeClient extends EventEmitter {
     if (!status) throw new HostError('HOST_PROTOCOL');
     this.#pending.delete(frame.id); clearTimeout(p.timer);
     this.emit('status', status);
-    p.resolve({ ok: frame.ok, status, error: frame.error ? { code: frame.error.code } : null });
+    const openedUrl = frame.openedUrl !== undefined ? safeOpenUrl(frame.openedUrl) : null;
+    p.resolve({ ok: frame.ok, status, ...(openedUrl ? { url: openedUrl } : {}), error: frame.error ? { code: frame.error.code } : null });
   }
-  call(method, timeoutMs = 5000) {
+  call(method, timeoutMs = 5000, extra = undefined) {
     if (!['getStatus','startAnalyzer','stopAnalyzer','openAnalyzer'].includes(method)) return Promise.reject(new HostError('IPC_DENIED'));
     if (this.#dead || this.#ending) return Promise.reject(new HostError('HOST_UNAVAILABLE'));
     if (this.#pending.size >= 8) return Promise.reject(new HostError('BUSY'));
-    const id = ++this.#seq;
+    const frame = { id: ++this.#seq, method };
+    if (method === 'openAnalyzer' && extra && typeof extra.route === 'string') {
+      if (!ALLOWED_ROUTES.has(extra.route)) return Promise.reject(new HostError('OPEN_FAILED'));
+      frame.route = extra.route;
+    }
+    const id = frame.id;
     return new Promise((resolve, reject) => {
       const p = { method, resolve, reject, timedOut: false };
       p.timer = setTimeout(() => {
@@ -64,7 +70,7 @@ export class RuntimeClient extends EventEmitter {
         // Keep a tombstone until its response: timeouts are NOT cancellations or permission to retry start.
       }, timeoutMs);
       this.#pending.set(id, p);
-      this.#child.stdin.write(JSON.stringify({ id, method }) + '\n', error => { if (error) this.#fault('HOST_UNAVAILABLE'); });
+      this.#child.stdin.write(JSON.stringify(frame) + '\n', error => { if (error) this.#fault('HOST_UNAVAILABLE'); });
     });
   }
   async end(timeoutMs = 6000) {

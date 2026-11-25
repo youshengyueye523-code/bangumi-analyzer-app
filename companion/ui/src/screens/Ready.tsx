@@ -14,6 +14,7 @@ import {
 import { Button, CountUp, MockTag, Switch, cx } from '../components/ui';
 import { Mascot } from '../components/Mascot';
 import { getProductBridge } from '../driver/product';
+import { disarmAutoOpen, markColdAutoStartHandled } from '../state/autoLaunch';
 import { useFlow } from '../state/flow';
 import { prefs, usePrefs } from '../state/prefs';
 import { fmtSec } from './Initialize';
@@ -47,11 +48,15 @@ export function ReadyScreen() {
 
   const enterAnalyzer = () => {
     persistSetup();
+    markColdAutoStartHandled();
+    disarmAutoOpen();
     flow.go('launch');
   };
 
   const goHome = () => {
     persistSetup();
+    markColdAutoStartHandled();
+    disarmAutoOpen();
     flow.go('home');
   };
 

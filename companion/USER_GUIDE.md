@@ -10,8 +10,8 @@
 
 ## 2. 安装与首次向导 (M2)
 
-1. 图形安装版请双击 **`Bangumi-Analyzer-Companion-Setup-2.0.0-rc4-win-x64.exe`** 按向导安装；便携版请解压 `Bangumi-Analyzer-Companion-Portable-2.0.0-rc4-win-x64.zip` 后运行目录中的 **`Bangumi-Analyzer-Companion.exe`**（另保留 **`Start-Companion.vbs`** / **`Start-Companion.bat`** 备用脚本）。
-2. **环境检查**：真实核验 Windows x64 系统架构、随附 Analyzer `v2.0.0 r3` ZIP 包 SHA-256 完整性、目标磁盘可用空间、写权限、回环端口可用性与 Bangumi API 连通性。
+1. 图形安装版请双击 **`Bangumi-Analyzer-Companion-Setup-2.0.0-win-x64.exe`** 按向导安装；便携版请解压 `Bangumi-Analyzer-Companion-Portable-2.0.0-win-x64.zip` 后运行目录中的 **`Bangumi-Analyzer-Companion.exe`**（另保留 **`Start-Companion.vbs`** / **`Start-Companion.bat`** 备用脚本）。
+2. **环境检查**：真实核验 Windows x64 系统架构、随附 Analyzer `v2.0.0 r5` ZIP 包 SHA-256 完整性、目标磁盘可用空间、写权限、回环端口可用性与 Bangumi API 连通性。
 3. **选择安装目录**：
    - 支持系统原生文件夹选择框与实时安全校验。
    - **安全限制**：禁止安装到 `Program Files`、`Windows`、OneDrive/网盘同步目录以及网络 UNC 路径，防止 SQLite 数据库损坏或权限锁死。
@@ -26,9 +26,11 @@
 
 - **无边框桌面窗口**：顶部标题栏支持拖拽、最小化、最大化/还原与安全关闭（关闭窗口前会确认 Analyzer 服务与数据库已安全落盘退出）。
 - **全屏沉浸模式**：按 **`F11`** 或点击标题栏全屏图标可进入/退出无边框全屏；按 **`Esc`** 退出全屏。
-- **快捷键与交互**：
+- **快捷键、主题与页面快捷入口**：
+  - 主页「档案与快捷入口」提供六个直达路由卡片：**仪表盘** (`/`), **收藏库** (`/library`), **统计分析** (`/analysis`), **系列 / IP** (`/series`), **我的画像** (`/profile`), **数据中枢** (`/diagnostics`)，兼容每次启动的随机本机端口。
   - 主页按 **`R`** 刷新实时运行状态；
-  - 可自由切换深色 / 浅色主题、显示/收起「小番」陪伴舞台、开关提示音效或减弱演出动画。
+  - 在「启动与偏好」中可独立设置 **Companion 桌面主题** 与 **Analyzer 网页端主题**（深色 / 浅色 / 跟随系统，持久化于本机 `data/config.json` 并与网页端双向同步），以及开启/关闭「启动时自动启动 Analyzer」「服务就绪后自动打开网页端」（每次启动仅触发一次）、小番舞台、提示音效或减弱演出动画；
+  - Windows 双显卡/核显环境默认使用高兼容 ANGLE D3D11 渲染路径并支持崩溃自动安全回退 2D 舞台，也可在偏好中切换 GPU 模式（重启生效）。
   - **注意**：在浏览器中关闭 Analyzer 网页标签页不会停止后端服务，需点击主控卡的「安全停止」或关闭 Companion 主窗口安全停机。
 
 ## 4. 备份、自检、安全更新与卸载 (M3)

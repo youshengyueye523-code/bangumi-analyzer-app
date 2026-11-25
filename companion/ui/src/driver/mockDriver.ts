@@ -12,6 +12,7 @@
 import { scenario, wait, jitter } from '../mock/scenario';
 import {
   describeRuntimeError,
+  type AnalyzerRoute,
   type AnalyzerStatus,
   type CompanionDriver,
   type OpenResult,
@@ -163,9 +164,10 @@ export function createMockDriver(dataDir = 'D:\\Analyzer'): CompanionDriver {
       });
     },
 
-    async openAnalyzer(): Promise<OpenResult> {
+    async openAnalyzer(route: AnalyzerRoute = '/'): Promise<OpenResult> {
       await wait(jitter(260));
-      const url = status.url ?? 'http://127.0.0.1:5173/';
+      const base = status.url ?? 'http://127.0.0.1:5173/';
+      const url = new URL(route, base).toString();
       const s = scenario.get();
       if (status.state !== 'running') {
         return {

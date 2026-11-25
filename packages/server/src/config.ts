@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import type { AppConfigPublic, AppConfigUpdate } from '@bangumi-analyzer/shared';
+import type { AppConfigPublic, AppConfigUpdate, ThemePreference } from '@bangumi-analyzer/shared';
 import type { AiConfigPublic } from '@bangumi-analyzer/shared';
 import type { MaterialSetting, WallpaperSetting } from '@bangumi-analyzer/shared';
 import {
@@ -45,6 +45,8 @@ export interface AppConfig {
   wallpaper: WallpaperSetting;
   /** 界面材质倾向：只保存用户可理解的三个值，底层参数由前端映射 */
   material: MaterialSetting;
+  /** 网页端主题偏好：dark / light / system（默认跟随系统） */
+  theme: ThemePreference;
   /** 隐藏 NSFW 内容（只影响 UI 可见性，不修改数据） */
   hideNsfw: boolean;
   /** 画像的自然语言总结（可选）：不配置时画像的统计部分完全可用 */
@@ -76,6 +78,7 @@ const DEFAULT_CONFIG: AppConfig = {
   httpProxy: '',
   wallpaper: { ...WALLPAPER_DEFAULT },
   material: { ...MATERIAL_DEFAULT },
+  theme: 'system',
   hideNsfw: false,
   ai: {
     enabled: false,
@@ -176,6 +179,10 @@ export function coerceMaterial(value: unknown): MaterialSetting {
   };
 }
 
+export function coerceTheme(value: unknown): ThemePreference {
+  return value === 'dark' || value === 'light' || value === 'system' ? value : 'system';
+}
+
 /** 读取本地配置；优先级：环境变量 > data/config.json > 内置默认值。 */
 export function loadConfig(): AppConfig {
   let fileConfig: Partial<AppConfig> = {};
@@ -215,6 +222,7 @@ export function loadConfig(): AppConfig {
     httpProxy: String(fileConfig.httpProxy ?? DEFAULT_CONFIG.httpProxy),
     wallpaper: coerceWallpaper(fileConfig.wallpaper),
     material: coerceMaterial(fileConfig.material),
+    theme: coerceTheme(fileConfig.theme),
     hideNsfw: coerceBoolean(fileConfig.hideNsfw, DEFAULT_CONFIG.hideNsfw),
     ai: {
       enabled: coerceBoolean(fileConfig.ai?.enabled, DEFAULT_CONFIG.ai.enabled),
@@ -284,6 +292,7 @@ export function saveConfig(patch: AppConfigUpdate): AppConfig {
   if (patch.material) {
     next.material = coerceMaterial({ ...next.material, ...patch.material });
   }
+  if (patch.theme !== undefined) next.theme = coerceTheme(patch.theme);
   if (patch.hideNsfw !== undefined) next.hideNsfw = patch.hideNsfw;
   if (patch.ai) {
     const ai = patch.ai;
@@ -331,6 +340,7 @@ export function toPublicConfig(config: AppConfig): AppConfigPublic {
     httpProxy: config.httpProxy,
     wallpaper: config.wallpaper,
     material: config.material,
+    theme: config.theme,
     hideNsfw: config.hideNsfw,
     ai: toPublicAiConfig(config.ai),
     dataDir: paths.dataDir,
